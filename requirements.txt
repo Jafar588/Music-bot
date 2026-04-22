@@ -1,2 +1,12 @@
-python-telegram-bot
-yt-dlp
+# --- المكتبات الأساسية ---
+python-telegram-bot[ext]>=20.0  # النسخة الشاملة مع جميع الإضافات
+yt-dlp>=2024.03.10             # محرك البحث والتحميل (أحدث إصدار لتجنب الحظر)
+
+# --- حيل السرعة والأداء (Performance Tricks) ---
+httpx[http2]                   # لتسريع الاتصال بتليجرام عبر بروتوكول HTTP/2
+ujson                          # معالج JSON فائق السرعة (أسرع من العادي بـ 3 أضعاف)
+uvloop; sys_platform == 'linux' # يجعل "قلب" بايثون يعمل بسرعة البرق على سيرفرات Railway
+
+# --- الحلول الأمنية وحل مشاكل الشهادات (Security & Fixes) ---
+certifi                        # حل مشكلة SSL Certificate Verify Failed الشهيرة
+python-dotenv                  # لإدارة التوكن والبيانات السرية بعيداً عن الكود
