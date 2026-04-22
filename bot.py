@@ -50,16 +50,31 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
 
     try:
-        with yt_dlp.YoutubeDL(YDL_SEARCH) as ydl:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'default_search': 'ytsearch5',
+            'source_address': '0.0.0.0',  # حل مشاكل الحظر
+            'extract_flat': False,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = await loop.run_in_executor(
                 None, lambda: ydl.extract_info(query, download=False)
             )
 
-        results = info.get("entries", [])[:5]
-
-        if not results:
-            await msg.edit_text("❌ ماكو نتائج")
+        # ✅ تأكد من البيانات
+        if not info:
+            await msg.edit_text("❌ ماكو نتائج (info فاضي)")
             return
+
+        entries = info.get("entries")
+
+        if not entries:
+            await msg.edit_text("❌ ماكو نتائج (entries فاضي)")
+            return
+
+        results = entries[:5]
 
         context.user_data["results"] = results
 
@@ -70,12 +85,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton(f"🎵 {title}", callback_data=f"dl_{i}")
             ])
 
-        await msg.edit_text("🎯 اختر:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await msg.edit_text(
+            "🎯 اختر:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     except Exception as e:
-        logging.error(e)
-        await msg.edit_text("❌ خطأ بالبحث")
-
+        logging.error(f"SEARCH ERROR: {e}")
+        await msg.edit_text(f"❌ خطأ بالبحث:\n{str(e)[:100]}")
 # ===== التحميل =====
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
