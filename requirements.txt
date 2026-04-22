@@ -1,5 +1,5 @@
 python-telegram-bot[ext]==20.7
-yt-dlp
+yt-dlp==2025.01.15
 shazamio
 httpx[http2]
 uvloop; sys_platform == 'linux'
