@@ -15,16 +15,19 @@ logging.basicConfig(level=logging.INFO)
 
 os.makedirs("downloads", exist_ok=True)
 
-# ===== إعدادات البحث (SoundCloud فقط) =====
+# ===== كاش ذكي =====
+CACHE = {}
+
+# ===== إعدادات SoundCloud البحث =====
 YDL_SEARCH = {
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'scsearch5',
+    'default_search': 'scsearch10',
 }
 
-# ===== إعدادات التحميل =====
+# ===== إعدادات التحميل (مستقرة) =====
 YDL_DOWNLOAD = {
-    'format': 'bestaudio',
+    'format': 'bestaudio/best',
     'outtmpl': 'downloads/%(id)s.%(ext)s',
     'quiet': True,
     'no_warnings': True,
@@ -37,11 +40,11 @@ YDL_DOWNLOAD = {
 
 # ===== start =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎧 اكتب اسم الأغنية")
+    await update.message.reply_text("🎧 اكتب اسم الأغنية وأنا أجيبها من SoundCloud")
 
 # ===== البحث =====
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text
+    query = update.message.text.strip()
     msg = await update.message.reply_text("🔍 جاري البحث في SoundCloud...")
 
     loop = asyncio.get_event_loop()
@@ -52,17 +55,17 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 None, lambda: ydl.extract_info(query, download=False)
             )
 
-        results = info.get("entries", [])[:5]
+        entries = info.get("entries", [])[:10]
 
-        if not results:
+        if not entries:
             await msg.edit_text("❌ ماكو نتائج")
             return
 
-        context.user_data["results"] = results
+        context.user_data["results"] = entries
 
         keyboard = []
-        for i, entry in enumerate(results):
-            title = entry.get("title", "No Title")[:40]
+        for i, e in enumerate(entries):
+            title = e.get("title", "No Title")[:45]
             keyboard.append([
                 InlineKeyboardButton(f"🎵 {title}", callback_data=f"dl_{i}")
             ])
@@ -74,9 +77,9 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(e)
-        await msg.edit_text("❌ فشل البحث")
+        await msg.edit_text("❌ صار خطأ بالبحث، حاول مرة ثانية")
 
-# ===== التحميل =====
+# ===== التحميل الذكي =====
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -85,8 +88,19 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     entry = context.user_data.get("results", [])[index]
 
     url = entry.get("webpage_url")
+    song_id = entry.get("id")
 
     msg = await query.message.reply_text("⏳ جاري التحميل...")
+
+    # ===== كاش =====
+    if song_id in CACHE and os.path.exists(CACHE[song_id]):
+        try:
+            with open(CACHE[song_id], "rb") as f:
+                await query.message.reply_audio(audio=f)
+            await msg.delete()
+            return
+        except:
+            pass  # إذا فشل الكاش نعيد التحميل
 
     loop = asyncio.get_event_loop()
 
@@ -98,6 +112,8 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_path = ydl.prepare_filename(info)
 
+        CACHE[song_id] = file_path
+
         with open(file_path, "rb") as f:
             await query.message.reply_audio(
                 audio=f,
@@ -106,12 +122,11 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 duration=int(info.get("duration") or 0)
             )
 
-        os.remove(file_path)
         await msg.delete()
 
     except Exception as e:
-        logging.error(e)
-        await msg.edit_text("❌ فشل التحميل")
+        logging.error(f"DOWNLOAD ERROR: {e}")
+        await msg.edit_text("❌ ما گدرت أحمل الأغنية، جرّب غير وحدة")
 
 # ===== تشغيل =====
 def main():
