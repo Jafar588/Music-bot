@@ -1,7 +1,5 @@
 python-telegram-bot[ext]
 yt-dlp
 httpx[http2]
-ujson
 uvloop; sys_platform == 'linux'
-pillow
 certifi
