@@ -43,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎵 اكتب اسم الأغنية أو أرسل مقطع صوتي")
 
 # ===== البحث =====
-async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text
     msg = await update.message.reply_text("🔍 جاري البحث...")
 
@@ -51,11 +51,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         ydl_opts = {
+        'http_headers': {
+    'User-Agent': 'Mozilla/5.0'
+}
             'quiet': True,
             'no_warnings': True,
             'default_search': 'ytsearch5',
-            'source_address': '0.0.0.0',  # حل مشاكل الحظر
-            'extract_flat': False,
+            'extract_flat': True,   # 🔥 هذا أهم سطر
+            'source_address': '0.0.0.0',
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -63,36 +66,25 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 None, lambda: ydl.extract_info(query, download=False)
             )
 
-        # ✅ تأكد من البيانات
-        if not info:
-            await msg.edit_text("❌ ماكو نتائج (info فاضي)")
-            return
-
-        entries = info.get("entries")
+        entries = info.get("entries", [])
 
         if not entries:
-            await msg.edit_text("❌ ماكو نتائج (entries فاضي)")
+            await msg.edit_text("❌ ماكو نتائج")
             return
 
-        results = entries[:5]
-
-        context.user_data["results"] = results
+        context.user_data["results"] = entries[:5]
 
         keyboard = []
-        for i, entry in enumerate(results):
+        for i, entry in enumerate(entries[:5]):
             title = entry.get("title", "No Title")[:40]
             keyboard.append([
                 InlineKeyboardButton(f"🎵 {title}", callback_data=f"dl_{i}")
             ])
 
-        await msg.edit_text(
-            "🎯 اختر:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        await msg.edit_text("🎯 اختر:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     except Exception as e:
-        logging.error(f"SEARCH ERROR: {e}")
-        await msg.edit_text(f"❌ خطأ بالبحث:\n{str(e)[:100]}")
+        await msg.edit_text(f"❌ خطأ:\n{str(e)[:100]}")
 # ===== التحميل =====
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -101,7 +93,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     index = int(query.data.split("_")[1])
     entry = context.user_data.get("results", [])[index]
 
-    url = entry.get("webpage_url")
+    url = f"https://www.youtube.com/watch?v={entry['id']}"
     video_id = entry.get("id")
 
     msg = await query.message.reply_text("⏳ جاري التحميل...")
