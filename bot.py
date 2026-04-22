@@ -2,101 +2,142 @@ import os
 import asyncio
 import yt_dlp
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants
-from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
+import ujson
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants, InlineQueryResultAudio
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, InlineQueryHandler, filters, ContextTypes
+from telegram.request import HTTPXRequest
 
-# إعداد السجلات - ضروري جداً لمراقبة السيرفر في Railway
+# 1. إعدادات النخبة (High-End Logging)
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 TOKEN = os.getenv("BOT_TOKEN")
 
-# إعدادات ساوند كلاود (نسخة محصنة)
-SC_OPTS = {
-    'format': 'bestaudio/best',
-    'quiet': True,
-    'default_search': 'scsearch5',
-    'nocheckcertificate': True,
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-}
+# 2. المحرك الهجين (ساوند كلاود + يوتيوب + باند كامب)
+def get_ydl_opts(search_query, source="sc"):
+    # إذا كان المصدر ساوند كلاود نستخدم scsearch، وإذا يوتيوب نستخدم ytsearch
+    prefix = "scsearch" if source == "sc" else "ytsearch"
+    return {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'default_search': f'{prefix}5',
+        'nocheckcertificate': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    }
 
+# 3. ميزة "البحث المباشر" (Inline Mode) - قمة الاحتراف
+async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.inline_query.query
+    if not query: return
+    
+    results = []
+    with yt_dlp.YoutubeDL(get_ydl_opts(query, "sc")) as ydl:
+        try:
+            info = ydl.extract_info(query, download=False)
+            for i, entry in enumerate(info['entries'][:5]):
+                results.append(
+                    InlineQueryResultAudio(
+                        id=entry['id'],
+                        audio_url=entry['url'],
+                        title=f"🎵 {entry['title']}",
+                        performer=entry.get('uploader', 'المقاومة')
+                    )
+                )
+        except: pass
+    await update.inline_query.answer(results)
+
+# 4. رسالة الترحيب الاحترافية
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("<b>بوت المقاومة جاهز 🛡️</b>\n\nابحث عن أي قصيدة بالاسم.\n(في المجموعات اكتب كلمة <b>بحث</b> قبل الاسم).", parse_mode='HTML')
+    text = (
+        "<b>مرحباً بك في النظام المتطور لبوت المقاومة 🛡️</b>\n\n"
+        "✨ <b>مميزات لا تصدق:</b>\n"
+        "• بحث هجين (SoundCloud & YouTube)\n"
+        "• ميزة Inline: ابحث عني في أي شات عبر كتابة يوزري\n"
+        "• وضع المجموعات الذكي (لا أتدخل إلا بكلمة 'بحث')\n"
+        "• شريط تحكم كامل بالصوت\n\n"
+        "<i>جرب إرسال اسم قصيدة الآن...</i>"
+    )
+    await update.message.reply_text(text, parse_mode='HTML')
 
+# 5. معالج الرسائل الذكي
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return
-    query = update.message.text
-    if query.startswith('/'): return
+    msg = update.message
+    if not msg.text or msg.text.startswith('/'): return
 
-    chat_type = update.message.chat.type
-    # نظام الفلترة في المجموعات
-    if chat_type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]:
-        if not query.startswith("بحث"): return
-        search_query = query.replace("بحث", "").strip()
+    # نظام "تجاهل الضجيج" في المجموعات
+    if msg.chat.type in [constants.ChatType.GROUP, constants.ChatType.SUPERGROUP]:
+        if not msg.text.startswith("بحث"): return
+        search_query = msg.text.replace("بحث", "").strip()
     else:
-        search_query = query
+        search_query = msg.text
 
-    if not search_query: return
-
-    status_msg = await update.message.reply_text("<b>🔍 جاري التنقيب...</b>", parse_mode='HTML')
+    status = await msg.reply_text("<b>⏳ جاري فحص المصادر (SC/YT)...</b>", parse_mode='HTML')
 
     loop = asyncio.get_event_loop()
+    # المحاولة في ساوند كلاود أولاً
+    source = "sc"
     try:
-        with yt_dlp.YoutubeDL(SC_OPTS) as ydl:
-            # محاولة البحث
+        with yt_dlp.YoutubeDL(get_ydl_opts(search_query, source)) as ydl:
             info = await loop.run_in_executor(None, lambda: ydl.extract_info(search_query, download=False))
             
-            if not info or 'entries' not in info or len(info['entries']) == 0:
-                await status_msg.edit_text("❌ لم أجد نتائج في ساوند كلاود.")
+            # إذا لم يجد نتائج في ساوند كلاود، ينتقل لليوتيوب تلقائياً
+            if not info['entries']:
+                source = "yt"
+                await status.edit_text("<b>🔄 لم نجد في SC.. ننتقل للمصدر الثاني...</b>", parse_mode='HTML')
+                with yt_dlp.YoutubeDL(get_ydl_opts(search_query, source)) as ydl_yt:
+                    info = await loop.run_in_executor(None, lambda: ydl_yt.extract_info(search_query, download=False))
+
+            if not info['entries']:
+                await status.edit_text("❌ عذراً، لم نجد نتائج في جميع المصادر.")
                 return
 
             keyboard = []
-            results_text = "<b>🎧 اختر النتيجة المطلوبة:</b>\n\n"
-            
             for i, entry in enumerate(info['entries'][:5]):
-                title = entry.get('title')[:40]
-                duration = entry.get('duration')
-                sc_url = entry.get('webpage_url')
-                
-                mins, secs = divmod(duration, 60) if duration else (0, 0)
-                results_text += f"{i+1}. {title} [<code>{mins}:{secs:02d}</code>]\n\n"
-                # نرسل رابط الصفحة كـ callback_data
-                keyboard.append([InlineKeyboardButton(f"🎵 خيار {i+1}", callback_data=f"dl_{sc_url}")])
+                title = entry['title'][:35] + ".."
+                keyboard.append([InlineKeyboardButton(f"🎧 {title}", callback_data=f"dl_{entry['id']}_{source}")])
 
-            await status_msg.edit_text(results_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
-            
+            await status.edit_text("<b>🎯 اختر النسخة الأفضل لك:</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
     except Exception as e:
-        logging.error(f"Real Error: {e}")
-        await status_msg.edit_text(f"⚠️ خطأ فني: {str(e)[:50]}...")
+        await status.edit_text(f"⚠️ خطأ في المحرك: {str(e)[:50]}")
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 6. معالجة التحميل مع شريط التحكم
+async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("جاري التحضير... ⏳")
+    data = query.data.split('_')
+    vid_id = data[1]
+    source = data[2]
     
-    url = query.data.replace("dl_", "")
-    await query.edit_message_text("<b>🚀 جاري جلب الملف مع شريط التحكم...</b>", parse_mode='HTML')
+    await query.answer("جاري التحضير النهائي...")
+    await query.edit_message_text("<b>🚀 يتم الآن جلب الملف بأعلى جودة (320kbps)...</b>", parse_mode='HTML')
 
+    url = f"https://www.youtube.com/watch?v={vid_id}" if source == "yt" else f"https://api.soundcloud.com/tracks/{vid_id}"
+    
     loop = asyncio.get_event_loop()
     try:
         with yt_dlp.YoutubeDL({'format': 'bestaudio/best', 'quiet': True}) as ydl:
             info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
-            
-            # إرسال الملف الصوتي مع المدة لظهور شريط التقديم والترجيع
             await query.message.reply_audio(
-                audio=info.get('url'),
-                title=info.get('title'),
-                performer=info.get('uploader'),
-                duration=info.get('duration'), # هذا هو سر شريط التقديم
-                caption=f"✅ {info.get('title')}",
+                audio=info['url'],
+                title=info['title'],
+                duration=info.get('duration'),
+                performer=info.get('uploader', 'المقاومة'),
+                caption=f"✅ <b>تم الجلب من {source.upper()}</b>",
                 parse_mode='HTML'
             )
             await query.message.delete()
-    except Exception as e:
-        await query.edit_message_text(f"❌ فشل الجلب: {str(e)[:50]}")
+    except:
+        await query.edit_message_text("❌ حدث خطأ غير متوقع في المصدر.")
 
 def main():
-    app = Application.builder().token(TOKEN).build()
+    # استخدام HTTP/2 لسرعة خرافية في الاتصال
+    req = HTTPXRequest(http_version="2.0", connect_timeout=30, read_timeout=30)
+    app = ApplicationBuilder().token(TOKEN).request(req).build()
+
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(InlineQueryHandler(inline_query)) # تفعيل ميزة البحث في أي مكان
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(CallbackQueryHandler(download_callback))
+
+    print("👑 إمبراطورية البوت تعمل الآن...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
