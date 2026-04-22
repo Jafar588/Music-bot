@@ -15,13 +15,15 @@ TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-YDL_OPTS_SEARCH = {
+os.makedirs("downloads", exist_ok=True)
+
+YDL_SEARCH = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'ytsearch10'
 }
 
-YDL_OPTS_DOWNLOAD = {
+YDL_DOWNLOAD = {
     'format': 'bestaudio/best',
     'outtmpl': 'downloads/%(id)s.%(ext)s',
     'quiet': True,
@@ -33,21 +35,19 @@ YDL_OPTS_DOWNLOAD = {
     }],
 }
 
-os.makedirs("downloads", exist_ok=True)
-
-# ===== /start =====
+# ===== start =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎵 اكتب اسم أي أغنية وأنا أجيبها لك!")
+    await update.message.reply_text("🎵 اكتب اسم الأغنية")
 
 # ===== البحث =====
-async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text
     msg = await update.message.reply_text("🔍 جاري البحث...")
 
     loop = asyncio.get_event_loop()
 
     try:
-        with yt_dlp.YoutubeDL(YDL_OPTS_SEARCH) as ydl:
+        with yt_dlp.YoutubeDL(YDL_SEARCH) as ydl:
             info = await loop.run_in_executor(
                 None, lambda: ydl.extract_info(query, download=False)
             )
@@ -55,7 +55,7 @@ async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = info.get("entries", [])[:5]
 
         if not results:
-            await msg.edit_text("❌ ماكو نتائج.")
+            await msg.edit_text("❌ ماكو نتائج")
             return
 
         context.user_data["results"] = results
@@ -68,16 +68,16 @@ async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
 
         await msg.edit_text(
-            "🎯 اختر الأغنية:",
+            "🎯 اختر:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     except Exception as e:
         logging.error(e)
-        await msg.edit_text("❌ صار خطأ أثناء البحث.")
+        await msg.edit_text("❌ خطأ بالبحث")
 
 # ===== التحميل =====
-async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
@@ -91,12 +91,12 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
 
     try:
-        with yt_dlp.YoutubeDL(YDL_OPTS_DOWNLOAD) as ydl:
+        with yt_dlp.YoutubeDL(YDL_DOWNLOAD) as ydl:
             await loop.run_in_executor(None, lambda: ydl.download([url]))
 
-        file_name = f"downloads/{entry['id']}.mp3"
+        file_path = f"downloads/{entry['id']}.mp3"
 
-        with open(file_name, "rb") as f:
+        with open(file_path, "rb") as f:
             await query.message.reply_audio(
                 audio=f,
                 title=entry.get("title"),
@@ -104,20 +104,24 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 duration=int(entry.get("duration") or 0)
             )
 
-        os.remove(file_name)
+        os.remove(file_path)
         await msg.delete()
 
     except Exception as e:
         logging.error(e)
-        await msg.edit_text("❌ فشل التحميل، جرب غير أغنية.")
+        await msg.edit_text("❌ فشل التحميل")
 
-# ===== التشغيل =====
+# ===== تشغيل =====
 def main():
+    if not TOKEN:
+        print("TOKEN NOT FOUND")
+        return
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_music))
-    app.add_handler(CallbackQueryHandler(download_music))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
+    app.add_handler(CallbackQueryHandler(download))
 
     app.run_polling()
 
