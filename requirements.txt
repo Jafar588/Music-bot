@@ -1,6 +1,7 @@
 python-telegram-bot[ext]
-yt-dlp
+yt-dlp>=2024.03.10
 shazamio
 httpx[http2]
 uvloop; sys_platform == 'linux'
 certifi
+cryptography
