@@ -1,123 +1,86 @@
-import sys
 import os
-import asyncio
 import logging
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import yt_dlp
 
-# السطر السحري لضمان عمل الاستيراد بين المجلدات
-sys.path.append(os.getcwd())
+# إعداد السجلات (Logs) بشكل نظيف
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# إعدادات السيرفر وتوكن البوت
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+# سحب التوكن من إعدادات Railway (Variables)
 TOKEN = os.getenv("BOT_TOKEN")
-process_limiter = asyncio.Semaphore(5)
 
-from telegram import Update, constants
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
-from telegram.request import HTTPXRequest
-
-# استيراد أدواتك من المجلدات الأخرى
-from core.search import search
-from core.downloader import extract
-from core.utils import pagination, is_url
-from core.anti_spam import is_spam
-from database.db import add_fav
+# إعدادات البحث والتحميل
+YDL_OPTIONS = {
+    'format': 'bestaudio/best',
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'source_address': '0.0.0.0', # لتجنب بعض مشاكل الشبكة في السيرفرات
+}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("<b>نظام المقاومة الإمبراطوري جاهز للعمل! ⚡</b>", parse_mode='HTML')
+    """أمر البداية"""
+    await update.message.reply_text("أهلاً بك! أرسل لي اسم الأغنية وسأبحث لك عنها في SoundCloud و YouTube.")
 
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not msg.text: return
-    user_id = update.effective_user.id
-    text = msg.text.strip()
+async def search_and_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة الرسائل والبحث"""
+    query = update.message.text
+    status_msg = await update.message.reply_text(f"🔎 جاري البحث عن: {query}...")
 
-    # فحص السبام
-    if is_spam(user_id):
-        return
+    # المحركات التي تستخدمها (نفس التي كانت في السجلات لديك)
+    engines = ['ytsearch1', 'scsearch1'] 
+    results = []
 
-    # فحص إذا كان النص رابطاً
-    if is_url(text):
-        status = await msg.reply_text("<b>🔗 تم رصد رابط.. جاري المعالجة...</b>", parse_mode='HTML')
-        async with process_limiter:
-            info = await extract(text)
-            if info:
-                await msg.reply_audio(
-                    audio=info['url'], title=info.get('title', 'صوت مستخرج'),
-                    duration=int(info.get('duration', 0)), performer="المقاومة"
-                )
-                await status.delete()
-            else:
-                await status.edit_text("❌ تعذر سحب الصوت من الرابط.")
-        return
+    try:
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            for engine in engines:
+                # تحديث الـ Logs بشكل احترافي
+                logger.info(f"Searching on engine: {engine} for query: {query}")
+                
+                # البحث الفعلي
+                info = ydl.extract_info(f"{engine}:{query}", download=False)
+                if 'entries' in info and len(info['entries']) > 0:
+                    video = info['entries'][0]
+                    results.append({
+                        'title': video.get('title'),
+                        'url': video.get('webpage_url'),
+                        'source': "YouTube" if "yt" in engine else "SoundCloud"
+                    })
 
-    # منطق المجموعات (يجب أن يبدأ بكلمة بحث)
-    if msg.chat.type != constants.ChatType.PRIVATE:
-        if not text.startswith("بحث"): return
-        query = text.replace("بحث", "").strip()
-    else:
-        query = text
+        if results:
+            response_text = "✨ **نتائج البحث:**\n\n"
+            for res in results:
+                response_text += f"🎵 [{res['title']}]({res['url']}) \n📌 المصدر: {res['source']}\n\n"
+            
+            await status_msg.edit_text(response_text, parse_mode="Markdown", disable_web_page_preview=False)
+        else:
+            await status_msg.edit_text("❌ لم يتم العثور على نتائج.")
 
-    if not query: return
-
-    status = await msg.reply_text("<b>🚀 جاري التنقيب في الأرشيف...</b>", parse_mode='HTML')
-    
-    async with process_limiter:
-        results = await search(query)
-        if not results:
-            await status.edit_text("❌ لم أجد نتائج في الأرشيف العالمي.")
-            return
-
-        context.user_data["r"] = results
-        await status.edit_text(
-            f"<b>🎯 عثرت على {len(results)} نسخة:</b>",
-            reply_markup=pagination(results, 1),
-            parse_mode='HTML'
-        )
-
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    results = context.user_data.get("r", [])
-
-    if not results:
-        await query.answer("⚠️ انتهت الجلسة، ابحث مجدداً.", show_alert=True)
-        return
-
-    if data.startswith("p_"):
-        page = int(data.split("_")[1])
-        await query.edit_message_reply_markup(reply_markup=pagination(results, page))
-        await query.answer()
-
-    elif data.startswith("d_"):
-        idx = int(data.split("_")[1])
-        entry = results[idx]
-        await query.answer("⚡ جاري السحب...")
-        prog = await query.message.reply_text("<b>⏳ يتم الآن استخراج الرابط المباشر...</b>", parse_mode='HTML')
-        
-        async with process_limiter:
-            info = await extract(entry['u'])
-            if info:
-                await query.message.reply_audio(
-                    audio=info['url'], title=entry['t'], 
-                    duration=int(entry['d'] or 0), performer="المقاومة"
-                )
-                await prog.delete()
-            else:
-                await prog.edit_text("❌ عذراً، هذا الرابط مقيد حالياً.")
+    except Exception as e:
+        logger.error(f"Error occurred: {e}")
+        await status_msg.edit_text("⚠️ حدث خطأ أثناء البحث، حاول مرة أخرى لاحقاً.")
 
 def main():
+    """تشغيل البوت"""
     if not TOKEN:
-        logging.error("❌ التوكن غير موجود! تأكد من إضافته في Railway Variables.")
+        logger.error("لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
         return
 
-    req = HTTPXRequest(http_version="2.0", connect_timeout=45, read_timeout=45)
-    app = ApplicationBuilder().token(TOKEN).request(req).build()
+    application = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
-    app.add_handler(CallbackQueryHandler(callback_handler))
-    
-    app.run_polling(drop_pending_updates=True)
+    # الأوامر
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_and_download))
+
+    # بدء التشغيل
+    logger.info("Bot started successfully...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
