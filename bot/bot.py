@@ -4,7 +4,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-# العودة خطوة للخلف لقرائة الملفات
+# حل مشكلة المسارات لقرائة المجلدات الأخرى
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import TOKEN, FORCE_SUB_CHANNEL
@@ -18,7 +18,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.message.chat.type
     user_id = update.message.from_user.id
 
-    # نظام الاشتراك الإجباري (يعمل في الخاص فقط)
+    # نظام الاشتراك الإجباري في الخاص
     if chat_type == 'private' and FORCE_SUB_CHANNEL:
         try:
             member = await context.bot.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
@@ -31,10 +31,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=reply_markup,
                     parse_mode="Markdown"
                 )
-                return # نوقف التنفيذ هنا
+                return 
         except Exception as e:
             logger.error(f"Force Sub Error: {e}")
-            # إذا لم يكن البوت مشرفاً، سيتجاهل الخطأ ولن يوقف البوت
 
     await update.message.reply_text(
         "⚡ **مرحباً بك في بوت الموسيقى المطور!**\n\n"
