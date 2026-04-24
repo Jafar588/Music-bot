@@ -14,4 +14,4 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 6. أمر التشغيل (السر هنا: أخبرنا السيرفر أن ملف التشغيل داخل مجلد bot)
-CMD ["python", "bot/bot.py"]
+CMD ["python", "-m", "bot.bot"]
