@@ -23,5 +23,4 @@ def pagination(results, page=1):
         nav.append(InlineKeyboardButton("➡️", callback_data=f"p_{page+1}"))
 
     keys.append(nav)
-
     return InlineKeyboardMarkup(keys)
