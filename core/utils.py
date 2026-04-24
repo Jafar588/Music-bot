@@ -1,26 +1,23 @@
-import re
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 def is_url(text):
-    return re.match(r'https?://', text)
+    return "http://" in text or "https://" in text
 
 def pagination(results, page=1):
-    per = 5
-    start = (page-1)*per
-    end = start+per
+    per_page = 5
+    total_pages = (len(results) + per_page - 1) // per_page
+    start = (page - 1) * per_page
+    current_results = results[start:start + per_page]
 
-    keys = []
-    for i, r in enumerate(results[start:end]):
-        keys.append([InlineKeyboardButton(r.get("title","🎵")[:35], callback_data=f"d_{start+i}")])
+    keyboard = []
+    for i, entry in enumerate(current_results):
+        title = entry.get('t', 'Audio Source')[:35]
+        keyboard.append([InlineKeyboardButton(f"🎵 {title}", callback_data=f"d_{start + i}")])
 
     nav = []
-    if page > 1:
-        nav.append(InlineKeyboardButton("⬅️", callback_data=f"p_{page-1}"))
-
-    nav.append(InlineKeyboardButton(f"{page}", callback_data="x"))
-
-    if end < len(results):
-        nav.append(InlineKeyboardButton("➡️", callback_data=f"p_{page+1}"))
-
-    keys.append(nav)
-    return InlineKeyboardMarkup(keys)
+    if page > 1: nav.append(InlineKeyboardButton("⬅️", callback_data=f"p_{page-1}"))
+    nav.append(InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="none"))
+    if start + per_page < len(results): nav.append(InlineKeyboardButton("➡️", callback_data=f"p_{page+1}"))
+    
+    keyboard.append(nav)
+    return InlineKeyboardMarkup(keyboard)
