@@ -1,3 +1,6 @@
-python-telegram-bot[ext]==20.7
+python-telegram-bot[ext]
 yt-dlp
+shazamio
 httpx[http2]
+ujson
+certifi
