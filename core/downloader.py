@@ -1,8 +1,6 @@
 import yt_dlp
 import asyncio
-import os
-from config import BASE_OPTS, TEMP_PATH
-from core.progress import hook
+from config import BASE_OPTS
 
 async def extract(url):
     loop = asyncio.get_event_loop()
@@ -13,15 +11,11 @@ async def extract(url):
 
     return await loop.run_in_executor(None, run)
 
-
 async def download_mp3(url):
-    filename = os.path.join(TEMP_PATH, "%(title)s.%(ext)s")
-
     opts = {
         **BASE_OPTS,
         "format": "bestaudio/best",
-        "outtmpl": filename,
-        "progress_hooks": [hook],
+        "outtmpl": "temp/%(title)s.%(ext)s",
         "postprocessors": [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -36,15 +30,10 @@ async def download_mp3(url):
 
     await loop.run_in_executor(None, run)
 
-    return filename.replace("%(title)s.%(ext)s", "")
-
-
 async def download_video(url):
-    filename = os.path.join(TEMP_PATH, "%(title)s.%(ext)s")
-
     opts = {
         **BASE_OPTS,
-        "outtmpl": filename
+        "outtmpl": "temp/%(title)s.%(ext)s"
     }
 
     loop = asyncio.get_event_loop()
@@ -54,5 +43,3 @@ async def download_video(url):
             ydl.download([url])
 
     await loop.run_in_executor(None, run)
-
-    return filename
