@@ -1,3 +1,11 @@
+import sys
+import os
+
+# إضافة المجلد الرئيسي للمشروع إلى مسارات بايثون
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# الآن يمكنك الاستيراد بدون مشاكل
+from core.search import search
 import os
 from telegram import *
 from telegram.ext import *
