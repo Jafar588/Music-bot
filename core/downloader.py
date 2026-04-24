@@ -8,7 +8,7 @@ from config import YDL_DOWNLOAD_OPTIONS
 
 logger = logging.getLogger(__name__)
 
-# دالة مساعدة لتشغيل التحميل في الخلفية (لمنع تجميد السيرفر)
+# تشغيل التحميل خارج روح البوت لمنع التجميد
 def run_fast_download(url):
     if not os.path.exists('temp'):
         os.makedirs('temp')
@@ -35,10 +35,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         url = song_info['url']
-        loading_msg = await query.message.reply_text(f"🚀 جاري التنزيل السريع لـ:\n{song_info['title']}...")
+        loading_msg = await query.message.reply_text(f"🚀 جاري التنزيل الصاروخي لـ:\n{song_info['title']}...")
 
         try:
-            # تشغيل التحميل بأقصى سرعة في مسار منفصل (Thread)
             file_path, info = await asyncio.to_thread(run_fast_download, url)
 
             if file_path and os.path.exists(file_path):
@@ -66,7 +65,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await query.message.reply_text(caption, parse_mode="Markdown")
 
-                # إرسال الصوت
+                # نظام محاولات الرفع لتجنب التقطيع
                 audio_sent = False
                 for attempt in range(3): 
                     try:
