@@ -1,23 +1,26 @@
 import sys
 import os
-sys.path.append(os.getcwd())
-from config import TOKEN
-# إضافة المجلد الرئيسي للمشروع إلى مسارات بايثون
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# الآن يمكنك الاستيراد بدون مشاكل
-from core.search import search
-import os
+# ضبط مسارات المشروع ليتعرف على المجلدات
+sys.path.append(os.getcwd())
+
+# سحب التوكن مباشرة من إعدادات Railway (بدون ملف config)
+TOKEN = os.getenv("BOT_TOKEN")
+
+# استيراد مكتبات تليجرام
 from telegram import *
 from telegram.ext import *
 from telegram.request import HTTPXRequest
 
-from config import TOKEN
+# استيراد ملفات مشروعك (core و database)
 from core.search import search
-from core.downloader import extract, download_mp3, download_video
+from core.downloader import extract, download_mp3
 from core.utils import pagination, is_url
 from core.anti_spam import is_spam
 from database.db import add_fav
+
+# --- هنا تبدأ دوال البوت (start و handle) ---
+
 
 async def start(update: Update, context):
     await update.message.reply_text("👋 اضغط /start ثم اكتب اسم الأغنية 🎵")
