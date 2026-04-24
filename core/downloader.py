@@ -1,22 +1,29 @@
-import os
 import logging
 import asyncio
 import yt_dlp
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import YDL_DOWNLOAD_OPTIONS
 
 logger = logging.getLogger(__name__)
 
-def run_fast_download(url):
-    if not os.path.exists('temp'):
-        os.makedirs('temp')
-        
-    with yt_dlp.YoutubeDL(YDL_DOWNLOAD_OPTIONS) as ydl:
-        info = ydl.extract_info(url, download=True)
+# إعدادات استخراج الرابط فقط (بدون تحميل)
+YDL_EXTRACT_OPTIONS = {
+    'format': 'bestaudio/best',
+    'quiet': True,
+    'no_warnings': True,
+    'nocheckcertificate': True,
+    'ignoreerrors': True,
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+}
+
+# دالة الجاسوس: تجلب الرابط السري المباشر ولا تحمل الملف
+def get_direct_url(url):
+    with yt_dlp.YoutubeDL(YDL_EXTRACT_OPTIONS) as ydl:
+        info = ydl.extract_info(url, download=False) # السر هنا: download=False
         if info:
-            file_path = ydl.prepare_filename(info)
-            return file_path, info
+            # نحاول الحصول على أفضل رابط مباشر للصوت
+            direct_url = info.get('url')
+            return direct_url, info
     return None, None
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -35,28 +42,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         url = song_info['url']
 
-        # -------------------------------------------------------------
-        # الخدعة الأولى (الذاكرة السحرية): هل الأغنية محملة مسبقاً؟
-        # -------------------------------------------------------------
+        # الذاكرة السحرية (تعمل كالمعتاد)
         if 'song_cache' not in context.bot_data:
             context.bot_data['song_cache'] = {}
 
         if url in context.bot_data['song_cache']:
-            # إذا وجدناها، نرسلها في لمح البصر بدون أي تحميل!
             file_id = context.bot_data['song_cache'][url]
             await query.message.reply_audio(
                 audio=file_id,
                 caption=f"⚡ **(تم الجلب من الذاكرة السريعة)**\n🎵 {song_info['title']}"
             )
             return
-        # -------------------------------------------------------------
 
-        loading_msg = await query.message.reply_text(f"🚀 جاري التنزيل لـ:\n{song_info['title']}...")
+        loading_msg = await query.message.reply_text(f"🚀 جاري تمرير الطلب لسيرفرات تلغرام لـ:\n{song_info['title']}...")
 
         try:
-            file_path, info = await asyncio.to_thread(run_fast_download, url)
+            # سحب الرابط المباشر فقط (يأخذ ثانية واحدة)
+            direct_url, info = await asyncio.to_thread(get_direct_url, url)
 
-            if file_path and os.path.exists(file_path):
+            if direct_url:
                 metadata = {
                     'title': info.get('title', 'Unknown'),
                     'uploader': info.get('uploader', 'Unknown'),
@@ -77,43 +81,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await query.message.reply_photo(photo=metadata['thumbnail'], caption=caption, parse_mode="Markdown")
                     except:
-                        pass # لتسريع العملية نتجاهل الخطأ إذا فشلت الصورة
+                        pass 
 
-                audio_sent = False
-                for attempt in range(3): 
-                    try:
-                        with open(file_path, 'rb') as audio_file:
-                            # حفظ الرسالة التي تم إرسالها لسرقة كود الملف منها
-                            sent_message = await query.message.reply_audio(
-                                audio=audio_file,
-                                title=metadata['title'],
-                                performer=metadata['uploader'],
-                                read_timeout=120,
-                                write_timeout=120,
-                                connect_timeout=120
-                            )
-                            
-                            # تخزين كود الأغنية في ذاكرة البوت للمرات القادمة
-                            context.bot_data['song_cache'][url] = sent_message.audio.file_id
-                            
-                        audio_sent = True
-                        break 
-                    except Exception as e:
-                        logger.warning(f"Audio send attempt {attempt + 1} failed: {e}")
-                        await asyncio.sleep(1)
-
+                # هنا الخدعة: نعطي الرابط المباشر لتلغرام ليقوم هو بالتحميل
                 try:
-                    os.remove(file_path)
-                except:
-                    pass
-
-                if audio_sent:
+                    sent_message = await query.message.reply_audio(
+                        audio=direct_url, # إرسال عبر الرابط وليس الملف!
+                        title=metadata['title'],
+                        performer=metadata['uploader'],
+                        read_timeout=60,
+                        connect_timeout=60
+                    )
+                    
+                    # حفظ الملف في الذاكرة للمرات القادمة
+                    context.bot_data['song_cache'][url] = sent_message.audio.file_id
                     await loading_msg.delete() 
-                else:
-                    await loading_msg.edit_text("❌ لم أتمكن من إرسال المقطع الصوتي بسبب ضعف الاتصال، جرب مرة أخرى.")
+
+                except Exception as e:
+                    logger.error(f"Telegram failed to download via direct URL: {e}")
+                    await loading_msg.edit_text("❌ سيرفرات تلغرام رفضت الرابط المباشر لهذه الأغنية بالذات. جرب نسخة أخرى من القائمة.")
             else:
-                await loading_msg.edit_text("❌ عذراً، هذه النسخة تالفة. جرب زراً آخر.")
+                await loading_msg.edit_text("❌ عذراً، لم أتمكن من استخراج الرابط المباشر. جرب زراً آخر.")
 
         except Exception as e:
-            logger.error(f"Download Error: {e}")
-            await loading_msg.edit_text("⚠️ فشل التحميل. جرب زراً آخر.")
+            logger.error(f"Extraction Error: {e}")
+            await loading_msg.edit_text("⚠️ فشل استخراج الطلب. جرب زراً آخر.")
