@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.getcwd()) # سطر سحري ليجد الملفات في المجلد الرئيسي
+from config import SEARCH_SC, SEARCH_AM
 import yt_dlp
 import asyncio
 from config import SEARCH_SC, SEARCH_AM
