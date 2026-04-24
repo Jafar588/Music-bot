@@ -1,8 +1,6 @@
 import os
 
 TOKEN = os.getenv("BOT_TOKEN")
-
-# يوزر المجموعة (ميزة الاشتراك الإجباري)
 FORCE_SUB_CHANNEL = "@cdzo1song"
 
 YDL_SEARCH_OPTIONS = {
@@ -13,9 +11,9 @@ YDL_SEARCH_OPTIONS = {
     'ignoreerrors': True,
 }
 
-# --- (الكود 6: إعدادات السرعة القصوى الصاروخية) ---
+# --- (الكود 7: استخدام محرك Aria2c الصاروخي) ---
 YDL_DOWNLOAD_OPTIONS = {
-    'format': 'm4a/bestaudio[ext=m4a]/bestaudio', # إجبار البوت على صيغة m4a لمنع التحويل البطيء
+    'format': 'm4a/bestaudio[ext=m4a]/bestaudio', 
     'quiet': True,
     'no_warnings': True,
     'nocheckcertificate': True,
@@ -23,8 +21,8 @@ YDL_DOWNLOAD_OPTIONS = {
     'outtmpl': 'temp/%(title)s.%(ext)s', 
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     
-    # محركات التوربو لتسريع التحميل
-    'concurrent_fragment_downloads': 7, # تحميل 7 أجزاء من الأغنية في نفس الوقت
-    'http_chunk_size': 10485760,        # تحميل أجزاء بحجم 10 ميجا
-    'noprogress': True,                 # إيقاف طباعة نسبة التحميل لتخفيف الضغط على السيرفر
+    # تفعيل المحرك الخارجي
+    'external_downloader': 'aria2c',
+    # إجبار المحرك على فتح 16 اتصال لتقطيع الملف وسحبه بثواني
+    'external_downloader_args': ['-x', '16', '-s', '16', '-k', '1M']
 }
