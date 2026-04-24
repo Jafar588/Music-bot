@@ -1,13 +1,11 @@
 import time
+from collections import defaultdict
 
-USERS = {}
+user_cooldowns = defaultdict(lambda: 0)
 
-def is_spam(user_id):
-    now = time.time()
-
-    if user_id in USERS:
-        if now - USERS[user_id] < 2:
-            return True
-
-    USERS[user_id] = now
+def is_spam(user_id, cooldown_time=3):
+    current_time = time.time()
+    if current_time - user_cooldowns[user_id] < cooldown_time:
+        return True
+    user_cooldowns[user_id] = current_time
     return False
