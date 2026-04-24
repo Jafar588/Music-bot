@@ -5,7 +5,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 # --- (ميزة الكود 5: الاشتراك الإجباري) ---
 # ضع هنا يوزر المجموعة أو القناة (مع علامة @)
 # تنبيه: يجب أن ترفع البوت كـ "مشرف" (Admin) في هذه المجموعة لكي يتمكن من معرفة المشتركين!
-FORCE_SUB_CHANNEL = "@YourChannelUsername" # استبدلها بيوزر مجموعتك
+FORCE_SUB_CHANNEL = "@cdzo1song" # استبدلها بيوزر مجموعتك
 
 YDL_SEARCH_OPTIONS = {
     'format': 'bestaudio/best',
