@@ -1,86 +1,97 @@
 import os
 import logging
-import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-# إعداد السجلات (Logs) بشكل نظيف
+# إعداد السجلات (Logs)
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# سحب التوكن من إعدادات Railway (Variables)
+# سحب التوكن من Variables في ريلوي
 TOKEN = os.getenv("BOT_TOKEN")
 
-# إعدادات البحث والتحميل
+# إعدادات البحث لـ SoundCloud و Audiomack
+# ملاحظة: yt-dlp يدعم المحركين بشكل ممتاز
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'source_address': '0.0.0.0', # لتجنب بعض مشاكل الشبكة في السيرفرات
+    'nocheckcertificate': True,
+    'ignoreerrors': True,
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر البداية"""
-    await update.message.reply_text("أهلاً بك! أرسل لي اسم الأغنية وسأبحث لك عنها في SoundCloud و YouTube.")
+    """رسالة الترحيب"""
+    await update.message.reply_text(
+        "🚀 **بوت تحميل الموسيقى جاهز!**\n\n"
+        "أرسل اسم الأغنية وسأبحث عنها في:\n"
+        "☁️ SoundCloud\n"
+        "🎵 Audiomack",
+        parse_mode="Markdown"
+    )
 
-async def search_and_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة الرسائل والبحث"""
+async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """البحث في ساوند كلاود وأوديو ماك"""
     query = update.message.text
-    status_msg = await update.message.reply_text(f"🔎 جاري البحث عن: {query}...")
+    status_msg = await update.message.reply_text(f"🔍 جاري البحث عن '{query}'...")
 
-    # المحركات التي تستخدمها (نفس التي كانت في السجلات لديك)
-    engines = ['ytsearch1', 'scsearch1'] 
+    # المحركات المستهدفة فقط
+    # scsearch: SoundCloud
+    # amsearch: Audiomack (مدعوم عبر yt-dlp)
+    engines = ['scsearch1', 'amsearch1']
     results = []
 
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             for engine in engines:
-                # تحديث الـ Logs بشكل احترافي
-                logger.info(f"Searching on engine: {engine} for query: {query}")
-                
-                # البحث الفعلي
-                info = ydl.extract_info(f"{engine}:{query}", download=False)
-                if 'entries' in info and len(info['entries']) > 0:
-                    video = info['entries'][0]
-                    results.append({
-                        'title': video.get('title'),
-                        'url': video.get('webpage_url'),
-                        'source': "YouTube" if "yt" in engine else "SoundCloud"
-                    })
+                source_name = "SoundCloud" if "sc" in engine else "Audiomack"
+                logger.info(f"Searching {source_name}...")
+
+                try:
+                    # البحث عن نتيجة واحدة من كل محرك
+                    info = ydl.extract_info(f"{engine}:{query}", download=False)
+                    if info and 'entries' in info and len(info['entries']) > 0:
+                        entry = info['entries'][0]
+                        results.append({
+                            'title': entry.get('title'),
+                            'url': entry.get('webpage_url') or entry.get('url'),
+                            'source': source_name
+                        })
+                except Exception as e:
+                    logger.error(f"Error in {source_name}: {e}")
+                    continue
 
         if results:
-            response_text = "✨ **نتائج البحث:**\n\n"
+            response = "✅ **نتائج البحث:**\n\n"
             for res in results:
-                response_text += f"🎵 [{res['title']}]({res['url']}) \n📌 المصدر: {res['source']}\n\n"
+                response += f"🎵 **{res['title']}**\n🔗 [اضغط هنا للاستماع/التحميل]({res['url']})\n📌 المصدر: {res['source']}\n\n"
             
-            await status_msg.edit_text(response_text, parse_mode="Markdown", disable_web_page_preview=False)
+            await status_msg.edit_text(response, parse_mode="Markdown", disable_web_page_preview=False)
         else:
-            await status_msg.edit_text("❌ لم يتم العثور على نتائج.")
+            await status_msg.edit_text("❌ للأسف لم أجد الأغنية في SoundCloud أو Audiomack.")
 
     except Exception as e:
-        logger.error(f"Error occurred: {e}")
-        await status_msg.edit_text("⚠️ حدث خطأ أثناء البحث، حاول مرة أخرى لاحقاً.")
+        logger.error(f"General Error: {e}")
+        await status_msg.edit_text("⚠️ حدث خطأ فني، حاول كتابة اسم الأغنية بشكل أوضح.")
 
 def main():
-    """تشغيل البوت"""
     if not TOKEN:
-        logger.error("لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
+        logger.error("خطأ: لم يتم ضبط BOT_TOKEN في Variables!")
         return
 
     application = Application.builder().token(TOKEN).build()
 
-    # الأوامر
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_and_download))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_music))
 
-    # بدء التشغيل
-    logger.info("Bot started successfully...")
-    application.run_polling()
+    logger.info("Bot is running without YouTube headaches...")
+    application.run_polling(drop_pending_updates=True) # يتجاهل الرسائل القديمة عند التشغيل لتجنب الـ Conflict
 
 if __name__ == '__main__':
     main()
