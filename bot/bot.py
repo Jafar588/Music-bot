@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # سحب التوكن
 TOKEN = os.getenv("BOT_TOKEN")
 
-# إعدادات البحث (لجلب الأسماء بسرعة للـ 5 أزرار)
+# إعدادات البحث (لجلب 10 أسماء بسرعة)
 YDL_SEARCH_OPTIONS = {
     'format': 'bestaudio/best',
     'quiet': True,
@@ -31,6 +31,15 @@ YDL_DOWNLOAD_OPTIONS = {
     'outtmpl': 'downloads/%(title)s.%(ext)s',
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 }
+
+# دالة لحذف الرسالة (القائمة) بعد مرور وقت محدد (دقيقتين)
+async def delete_message_later(message, delay):
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except Exception as e:
+        # الرسالة قد تكون حُذفت يدوياً، نتجاهل الخطأ
+        pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -53,10 +62,10 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not query: return
 
-    status_msg = await update.message.reply_text(f"🔍 جاري البحث عن 5 نسخ لـ: {query}...")
+    status_msg = await update.message.reply_text(f"🔍 جاري البحث عن 10 نسخ لـ: {query}...")
     
-    # محركات البحث (نبحث عن 5 نتائج)
-    engines = ['scsearch5', 'amsearch5', 'dzsearch5', 'spsearch5']
+    # محركات البحث (نبحث عن 10 نتائج)
+    engines = ['scsearch10', 'amsearch10', 'dzsearch10', 'spsearch10']
     keyboard = []
     results_dict = {}
     found = False
@@ -66,7 +75,8 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 info = ydl.extract_info(f"{engine}:{query}", download=False)
                 if info and 'entries' in info and len(info['entries']) > 0:
-                    for idx, entry in enumerate(info['entries'][:5]):
+                    # جلب حتى 10 نتائج
+                    for idx, entry in enumerate(info['entries'][:10]):
                         title = entry.get('title', 'Unknown Title')
                         url = entry.get('url') or entry.get('webpage_url')
                         if url:
@@ -75,7 +85,8 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 'title': title, 
                                 'source': "SoundCloud" if "sc" in engine else "Other"
                             }
-                            keyboard.append([InlineKeyboardButton(f"{idx+1}. {title}", callback_data=f"dl_{idx}")])
+                            # إضافة زر لكل أغنية (زر واحد في كل سطر ليكون الاسم واضحاً)
+                            keyboard.append([InlineKeyboardButton(f"{idx+1}. {title[:40]}", callback_data=f"dl_{idx}")])
                     found = True
                     break # إذا نجح المحرك الأول، نكتفي به
             except Exception as e:
@@ -89,7 +100,13 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # حفظ النتائج في الذاكرة المؤقتة للمحادثة
     context.chat_data[status_msg.message_id] = results_dict
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await status_msg.edit_text("🔍 تم العثور على هذه النسخ، اختر واحدة للتحميل:", reply_markup=reply_markup)
+    
+    # تعديل الرسالة لتصبح قائمة الأزرار
+    await status_msg.edit_text("🔍 تم العثور على 10 نسخ، اختر واحدة للتحميل:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=reply_markup)
+    
+    # تشغيل مؤقت لحذف القائمة بعد 120 ثانية (دقيقتين)
+    asyncio.create_task(delete_message_later(status_msg, 120))
+
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -102,11 +119,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         song_info = context.chat_data.get(msg_id, {}).get(idx)
 
         if not song_info:
-            await query.edit_message_text("❌ انتهت صلاحية هذه القائمة، يرجى البحث من جديد.")
+            # في حال ضغط الزر بعد انتهاء الوقت أو مسح الذاكرة
+            await query.message.reply_text("❌ انتهت صلاحية هذا الزر، يرجى البحث من جديد.")
             return
 
         url = song_info['url']
-        await query.edit_message_text(f"⏳ جاري تحميل:\n{song_info['title']}...")
+        
+        # نرسل رسالة جديدة للتحميل (بدل تعديل القائمة لكي تبقى القائمة ظاهرة)
+        loading_msg = await query.message.reply_text(f"⏳ جاري تحميل النسخة رقم {int(idx)+1}:\n{song_info['title']}...")
 
         try:
             if not os.path.exists('downloads'):
@@ -128,7 +148,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     }
 
             if file_path and os.path.exists(file_path):
-                # استعادة ميزة الكابشن والصورة
+                # تجهيز النص المرفق (الكابشن)
                 caption = (
                     f"✅ **تم العثور على الأغنية!**\n\n"
                     f"🎵 **الأسم:** {metadata['title']}\n"
@@ -137,6 +157,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔗 [رابط الأغنية]({metadata['url']})"
                 )
 
+                # إرسال الصورة إذا توفرت
                 if metadata.get('thumbnail'):
                     try:
                         await query.message.reply_photo(photo=metadata['thumbnail'], caption=caption, parse_mode="Markdown")
@@ -153,13 +174,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
                 os.remove(file_path)
-                await query.message.delete() # حذف رسالة "جاري التحميل" لتنظيف المحادثة
+                # نحذف رسالة "جاري التحميل" فقط لأن المهمة نجحت
+                await loading_msg.delete() 
             else:
-                await query.edit_message_text("❌ عذراً، هذه النسخة تالفة. جرب زراً آخر من نفس القائمة السابقة.")
+                await loading_msg.edit_text("❌ عذراً، هذه النسخة تالفة. القائمة لا تزال في الأعلى، جرب زراً آخر.")
 
         except Exception as e:
             logger.error(f"Download Error: {e}")
-            await query.edit_message_text("⚠️ فشل التحميل بسبب خطأ في المصدر. جرب زراً آخر.")
+            await loading_msg.edit_text("⚠️ فشل التحميل بسبب خطأ في المصدر. القائمة لا تزال في الأعلى، جرب زراً آخر.")
 
 def main():
     if not TOKEN: 
