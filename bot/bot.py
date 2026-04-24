@@ -38,7 +38,6 @@ async def delete_message_later(message, delay):
     try:
         await message.delete()
     except Exception as e:
-        # الرسالة قد تكون حُذفت يدوياً، نتجاهل الخطأ
         pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +74,6 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 info = ydl.extract_info(f"{engine}:{query}", download=False)
                 if info and 'entries' in info and len(info['entries']) > 0:
-                    # جلب حتى 10 نتائج
                     for idx, entry in enumerate(info['entries'][:10]):
                         title = entry.get('title', 'Unknown Title')
                         url = entry.get('url') or entry.get('webpage_url')
@@ -85,10 +83,9 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 'title': title, 
                                 'source': "SoundCloud" if "sc" in engine else "Other"
                             }
-                            # إضافة زر لكل أغنية (زر واحد في كل سطر ليكون الاسم واضحاً)
                             keyboard.append([InlineKeyboardButton(f"{idx+1}. {title[:40]}", callback_data=f"dl_{idx}")])
                     found = True
-                    break # إذا نجح المحرك الأول، نكتفي به
+                    break 
             except Exception as e:
                 logger.error(f"Search Engine {engine} failed: {e}")
                 continue
@@ -97,11 +94,10 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text("❌ لم يتم العثور على نتائج. جرب اسماً آخر.")
         return
 
-    # حفظ النتائج في الذاكرة المؤقتة للمحادثة
+    # حفظ النتائج في الذاكرة
     context.chat_data[status_msg.message_id] = results_dict
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # تعديل الرسالة لتصبح قائمة الأزرار
     await status_msg.edit_text("🔍 تم العثور على 10 نسخ، اختر واحدة للتحميل:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=reply_markup)
     
     # تشغيل مؤقت لحذف القائمة بعد 120 ثانية (دقيقتين)
@@ -119,13 +115,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         song_info = context.chat_data.get(msg_id, {}).get(idx)
 
         if not song_info:
-            # في حال ضغط الزر بعد انتهاء الوقت أو مسح الذاكرة
             await query.message.reply_text("❌ انتهت صلاحية هذا الزر، يرجى البحث من جديد.")
             return
 
         url = song_info['url']
-        
-        # نرسل رسالة جديدة للتحميل (بدل تعديل القائمة لكي تبقى القائمة ظاهرة)
         loading_msg = await query.message.reply_text(f"⏳ جاري تحميل النسخة رقم {int(idx)+1}:\n{song_info['title']}...")
 
         try:
@@ -148,7 +141,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     }
 
             if file_path and os.path.exists(file_path):
-                # تجهيز النص المرفق (الكابشن)
+                # إعطاء النظام ثانية واحدة ليتأكد من كتابة الملف بالكامل قبل محاولة إرساله
+                await asyncio.sleep(1)
+
                 caption = (
                     f"✅ **تم العثور على الأغنية!**\n\n"
                     f"🎵 **الأسم:** {metadata['title']}\n"
@@ -157,7 +152,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔗 [رابط الأغنية]({metadata['url']})"
                 )
 
-                # إرسال الصورة إذا توفرت
+                # 1. إرسال الصورة
                 if metadata.get('thumbnail'):
                     try:
                         await query.message.reply_photo(photo=metadata['thumbnail'], caption=caption, parse_mode="Markdown")
@@ -166,16 +161,36 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await query.message.reply_text(caption, parse_mode="Markdown")
 
-                # إرسال الصوت
-                await query.message.reply_audio(
-                    audio=open(file_path, 'rb'),
-                    title=metadata['title'],
-                    performer=metadata['uploader']
-                )
+                # 2. إرسال الصوت (الحل الجديد: نظام المحاولات المتكررة وزيادة وقت الرفع)
+                audio_sent = False
+                for attempt in range(3): # سيحاول إرسالها 3 مرات بالخفاء
+                    try:
+                        with open(file_path, 'rb') as audio_file:
+                            await query.message.reply_audio(
+                                audio=audio_file,
+                                title=metadata['title'],
+                                performer=metadata['uploader'],
+                                read_timeout=120,    # إعطاء سيرفر تلغرام دقيقتين للرفع بدلاً من الوقت الافتراضي القصير
+                                write_timeout=120,
+                                connect_timeout=120
+                            )
+                        audio_sent = True
+                        break # نجح الإرسال! نخرج من حلقة المحاولات
+                    except Exception as e:
+                        logger.warning(f"Audio send attempt {attempt + 1} failed: {e}")
+                        await asyncio.sleep(2) # انتظار ثانيتين قبل المحاولة التي تليها
 
-                os.remove(file_path)
-                # نحذف رسالة "جاري التحميل" فقط لأن المهمة نجحت
-                await loading_msg.delete() 
+                # تنظيف الملف من السيرفر
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+
+                # معالجة النتيجة النهائية
+                if audio_sent:
+                    await loading_msg.delete() 
+                else:
+                    await loading_msg.edit_text("❌ لم أتمكن من إرسال المقطع الصوتي بسبب ضعف الاتصال بسيرفر تلغرام، القائمة لا تزال في الأعلى، جرب مرة أخرى.")
             else:
                 await loading_msg.edit_text("❌ عذراً، هذه النسخة تالفة. القائمة لا تزال في الأعلى، جرب زراً آخر.")
 
