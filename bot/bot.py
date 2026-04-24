@@ -1,23 +1,41 @@
 import sys
 import os
 import logging
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-# --- (هذا هو الحل السحري) ---
-# هذا السطر يخبر بايثون أن يرجع خطوة للخارج (للمجلد الرئيسي) لكي يرى ملف config وبقية المجلدات
+# العودة خطوة للخلف لقرائة الملفات
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# الآن سيتمكن من قراءة الملفات الخارجية بدون أي خطأ
-from config import TOKEN
+from config import TOKEN, FORCE_SUB_CHANNEL
 from core.search import search_and_list
 from core.downloader import button_callback
 
-# إعداد السجلات
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_type = update.message.chat.type
+    user_id = update.message.from_user.id
+
+    # نظام الاشتراك الإجباري (يعمل في الخاص فقط)
+    if chat_type == 'private' and FORCE_SUB_CHANNEL:
+        try:
+            member = await context.bot.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
+            if member.status in ['left', 'kicked']:
+                keyboard = [[InlineKeyboardButton("📢 اضغط هنا للانضمام للمجموعة", url=f"https://t.me/{FORCE_SUB_CHANNEL.replace('@', '')}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(
+                    "❌ **عذراً عزيزي، يجب عليك الانضمام لمجموعتنا أولاً لتتمكن من استخدام البوت في الخاص.**\n\n"
+                    "انضم من الزر بالأسفل، ثم أرسل /start",
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
+                return # نوقف التنفيذ هنا
+        except Exception as e:
+            logger.error(f"Force Sub Error: {e}")
+            # إذا لم يكن البوت مشرفاً، سيتجاهل الخطأ ولن يوقف البوت
+
     await update.message.reply_text(
         "⚡ **مرحباً بك في بوت الموسيقى المطور!**\n\n"
         "💡 **في المجموعات:** ابدأ طلبك بكلمة 'بحث' (مثال: بحث انتي السند).\n"
@@ -31,16 +49,12 @@ def main():
 
     application = Application.builder().token(TOKEN).build()
     
-    # إضافة أمر البداية
     application.add_handler(CommandHandler("start", start))
 
-    # فلتر المجموعات والخاص
     group_filter = filters.ChatType.GROUPS & filters.Regex(r'^بحث\s+')
     private_filter = filters.ChatType.PRIVATE
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (private_filter | group_filter), search_and_list))
-    
-    # معالج الأزرار
     application.add_handler(CallbackQueryHandler(button_callback))
     
     logger.info("Bot is running...")
