@@ -8,6 +8,18 @@ from config import YDL_DOWNLOAD_OPTIONS
 
 logger = logging.getLogger(__name__)
 
+# دالة مساعدة لتشغيل التحميل في الخلفية (لمنع تجميد السيرفر)
+def run_fast_download(url):
+    if not os.path.exists('temp'):
+        os.makedirs('temp')
+        
+    with yt_dlp.YoutubeDL(YDL_DOWNLOAD_OPTIONS) as ydl:
+        info = ydl.extract_info(url, download=True)
+        if info:
+            file_path = ydl.prepare_filename(info)
+            return file_path, info
+    return None, None
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer() 
@@ -23,30 +35,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         url = song_info['url']
-        loading_msg = await query.message.reply_text(f"⏳ جاري التحميل (نسخة سريعة) لـ:\n{song_info['title']}...")
+        loading_msg = await query.message.reply_text(f"🚀 جاري التنزيل السريع لـ:\n{song_info['title']}...")
 
         try:
-            # استخدام مجلد temp الموجود في هيكليتك
-            if not os.path.exists('temp'):
-                os.makedirs('temp')
-
-            file_path = None
-            metadata = {}
-
-            with yt_dlp.YoutubeDL(YDL_DOWNLOAD_OPTIONS) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if info:
-                    file_path = ydl.prepare_filename(info)
-                    metadata = {
-                        'title': info.get('title', 'Unknown'),
-                        'uploader': info.get('uploader', 'Unknown'),
-                        'thumbnail': info.get('thumbnail'),
-                        'url': url,
-                        'source': song_info['source']
-                    }
+            # تشغيل التحميل بأقصى سرعة في مسار منفصل (Thread)
+            file_path, info = await asyncio.to_thread(run_fast_download, url)
 
             if file_path and os.path.exists(file_path):
-                await asyncio.sleep(0.5)
+                metadata = {
+                    'title': info.get('title', 'Unknown'),
+                    'uploader': info.get('uploader', 'Unknown'),
+                    'thumbnail': info.get('thumbnail'),
+                    'url': url,
+                    'source': song_info['source']
+                }
 
                 caption = (
                     f"✅ **تم العثور على الأغنية!**\n\n"
@@ -64,7 +66,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await query.message.reply_text(caption, parse_mode="Markdown")
 
-                # إرسال الصوت (الرفع السريع والمحاولات)
+                # إرسال الصوت
                 audio_sent = False
                 for attempt in range(3): 
                     try:
@@ -97,4 +99,4 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             logger.error(f"Download Error: {e}")
-            await loading_msg.edit_text("⚠️ فشل التحميل بسبب خطأ في المصدر. القائمة لا تزال في الأعلى، جرب زراً آخر.")
+            await loading_msg.edit_text("⚠️ فشل التحميل. القائمة لا تزال في الأعلى، جرب زراً آخر.")
