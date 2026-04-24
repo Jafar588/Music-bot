@@ -21,9 +21,10 @@ YDL_SEARCH_OPTIONS = {
     'ignoreerrors': True,
 }
 
-# إعدادات التحميل (عند الضغط على الزر)
+# === (التعديل هنا لتسريع التحميل بشكل كبير جداً) ===
+# أجبرنا البوت على اختيار صيغ خفيفة وسريعة الرفع مثل m4a بدلاً من الملفات الضخمة
 YDL_DOWNLOAD_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best', 
     'quiet': True,
     'no_warnings': True,
     'nocheckcertificate': True,
@@ -63,7 +64,7 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = await update.message.reply_text(f"🔍 جاري البحث عن 10 نسخ لـ: {query}...")
     
-    # محركات البحث (نبحث عن 10 نتائج)
+    # محركات البحث
     engines = ['scsearch10', 'amsearch10', 'dzsearch10', 'spsearch10']
     keyboard = []
     results_dict = {}
@@ -100,7 +101,7 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await status_msg.edit_text("🔍 تم العثور على 10 نسخ، اختر واحدة للتحميل:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=reply_markup)
     
-    # تشغيل مؤقت لحذف القائمة بعد 120 ثانية (دقيقتين)
+    # تشغيل مؤقت لحذف القائمة
     asyncio.create_task(delete_message_later(status_msg, 120))
 
 
@@ -119,7 +120,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         url = song_info['url']
-        loading_msg = await query.message.reply_text(f"⏳ جاري تحميل النسخة رقم {int(idx)+1}:\n{song_info['title']}...")
+        loading_msg = await query.message.reply_text(f"⏳ جاري التحميل (نسخة سريعة) لـ:\n{song_info['title']}...")
 
         try:
             if not os.path.exists('downloads'):
@@ -141,8 +142,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     }
 
             if file_path and os.path.exists(file_path):
-                # إعطاء النظام ثانية واحدة ليتأكد من كتابة الملف بالكامل قبل محاولة إرساله
-                await asyncio.sleep(1)
+                # تقليل وقت الانتظار الوهمي لتسريع العملية أكثر
+                await asyncio.sleep(0.5)
 
                 caption = (
                     f"✅ **تم العثور على الأغنية!**\n\n"
@@ -152,7 +153,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔗 [رابط الأغنية]({metadata['url']})"
                 )
 
-                # 1. إرسال الصورة
                 if metadata.get('thumbnail'):
                     try:
                         await query.message.reply_photo(photo=metadata['thumbnail'], caption=caption, parse_mode="Markdown")
@@ -161,36 +161,35 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await query.message.reply_text(caption, parse_mode="Markdown")
 
-                # 2. إرسال الصوت (الحل الجديد: نظام المحاولات المتكررة وزيادة وقت الرفع)
+                # إرسال الصوت (الرفع السريع)
                 audio_sent = False
-                for attempt in range(3): # سيحاول إرسالها 3 مرات بالخفاء
+                for attempt in range(3): 
                     try:
                         with open(file_path, 'rb') as audio_file:
                             await query.message.reply_audio(
                                 audio=audio_file,
                                 title=metadata['title'],
                                 performer=metadata['uploader'],
-                                read_timeout=120,    # إعطاء سيرفر تلغرام دقيقتين للرفع بدلاً من الوقت الافتراضي القصير
+                                read_timeout=120,
                                 write_timeout=120,
                                 connect_timeout=120
                             )
                         audio_sent = True
-                        break # نجح الإرسال! نخرج من حلقة المحاولات
+                        break 
                     except Exception as e:
                         logger.warning(f"Audio send attempt {attempt + 1} failed: {e}")
-                        await asyncio.sleep(2) # انتظار ثانيتين قبل المحاولة التي تليها
+                        await asyncio.sleep(1) # تقليل وقت الانتظار بين المحاولات لثانية واحدة فقط
 
-                # تنظيف الملف من السيرفر
+                # تنظيف الملف
                 try:
                     os.remove(file_path)
                 except:
                     pass
 
-                # معالجة النتيجة النهائية
                 if audio_sent:
                     await loading_msg.delete() 
                 else:
-                    await loading_msg.edit_text("❌ لم أتمكن من إرسال المقطع الصوتي بسبب ضعف الاتصال بسيرفر تلغرام، القائمة لا تزال في الأعلى، جرب مرة أخرى.")
+                    await loading_msg.edit_text("❌ لم أتمكن من إرسال المقطع الصوتي بسبب ضعف الاتصال بسيرفر تلغرام، جرب مرة أخرى.")
             else:
                 await loading_msg.edit_text("❌ عذراً، هذه النسخة تالفة. القائمة لا تزال في الأعلى، جرب زراً آخر.")
 
