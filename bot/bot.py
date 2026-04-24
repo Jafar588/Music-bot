@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import re
 from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
@@ -30,14 +31,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "أرسل اسم الأغنية وسأبحث لك في:\n"
         "🎵 SoundCloud, Audiomack, Spotify,\n"
         "Deezer, Apple Music, Tidal\n\n"
-        "سأرسل لك التفاصيل مع ملف الصوت مباشرة."
+        "💡 **في المجموعات:** ابدأ طلبك بكلمة 'بحث' (مثال: بحث انتي السند).\n"
+        "📱 **في الخاص:** أرسل الاسم مباشرة."
     )
 
 async def search_and_send_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text
+    raw_text = update.message.text
+    chat_type = update.message.chat.type
+
+    # تنظيف النص إذا بدأ بكلمة "بحث" في المجموعات
+    if chat_type in ['group', 'supergroup'] and raw_text.startswith("بحث "):
+        query = raw_text.replace("بحث ", "", 1).strip()
+    else:
+        query = raw_text.strip()
+
+    if not query:
+        return
+
     status_msg = await update.message.reply_text(f"🔍 جاري البحث والتحميل: {query}...")
 
-    # ترتيب المحركات (بدأنا بالمنصات الأكثر استقراراً لـ Railway)
+    # ترتيب المحركات
     engines = ['scsearch1', 'amsearch1', 'dzsearch1', 'spsearch1']
     
     try:
@@ -55,7 +68,6 @@ async def search_and_send_all(update: Update, context: ContextTypes.DEFAULT_TYPE
                         entry = info['entries'][0]
                         file_path = ydl.prepare_filename(entry)
                         
-                        # جلب البيانات المطلوبة
                         metadata = {
                             'title': entry.get('title', 'Unknown'),
                             'uploader': entry.get('uploader', 'Unknown'),
@@ -69,7 +81,6 @@ async def search_and_send_all(update: Update, context: ContextTypes.DEFAULT_TYPE
                     continue
 
         if file_path and os.path.exists(file_path):
-            # 1. إرسال الصورة مع البيانات (الرابط والاسم)
             caption = (
                 f"✅ **تم العثور على الأغنية!**\n\n"
                 f"🎵 **الأسم:** {metadata['title']}\n"
@@ -79,38 +90,49 @@ async def search_and_send_all(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
 
             if metadata['thumbnail']:
-                await update.message.reply_photo(
-                    photo=metadata['thumbnail'],
-                    caption=caption,
-                    parse_mode="Markdown"
-                )
+                try:
+                    await update.message.reply_photo(photo=metadata['thumbnail'], caption=caption, parse_mode="Markdown")
+                except:
+                    await update.message.reply_text(caption, parse_mode="Markdown")
             else:
                 await update.message.reply_text(caption, parse_mode="Markdown")
 
-            # 2. إرسال الملف الصوتي
             await update.message.reply_audio(
                 audio=open(file_path, 'rb'),
                 title=metadata['title'],
                 performer=metadata['uploader']
             )
 
-            # التنظيف
             os.remove(file_path)
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ لم أتمكن من العثور على الأغنية أو تحميلها من المصادر المتاحة.")
+            await status_msg.edit_text("❌ لم أتمكن من العثور على الأغنية.")
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        await status_msg.edit_text("⚠️ حدث خطأ فني أثناء المعالجة.")
+        if status_msg:
+            await status_msg.edit_text("⚠️ حدث خطأ فني أثناء المعالجة.")
 
 def main():
-    if not TOKEN: return
+    if not TOKEN: 
+        print("Error: No BOT_TOKEN found!")
+        return
+
     application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_and_send_all))
     
-    # drop_pending_updates=True مهم جداً لمنع الـ Conflict
+    application.add_handler(CommandHandler("start", start))
+
+    # الفلتر الجديد:
+    # يعمل في الخاص على أي نص
+    # يعمل في المجموعات فقط إذا بدأت الرسالة بكلمة "بحث "
+    group_filter = filters.ChatType.GROUPS & filters.Regex(r'^بحث\s+')
+    private_filter = filters.ChatType.PRIVATE
+    
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (private_filter | group_filter), 
+        search_and_send_all
+    ))
+    
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
