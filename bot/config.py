@@ -1,16 +1,23 @@
-import os
+# --- إعدادات البوت الأساسية ---
+TOKEN = "8784379561:AAERY1Yq7Nktu8uwZAzh5Wqnu68XpQmTuU4"
 
-TOKEN = os.getenv("8784379561:AAERYlYq7Nktu8uwZAzh5Wqnu68XpQmTuU4")
+# --- إعدادات الهوية (User Agent) ---
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-USER_AGENT = "Mozilla/5.0 Chrome/124.0.0.0"
-
-BASE_OPTS = {
-    'quiet': True,
+# --- خيارات المحركات ---
+SEARCH_OPTS_SC = {
+    'default_search': 'scsearch50',
+    'extract_flat': True,
     'nocheckcertificate': True,
     'user_agent': USER_AGENT
 }
 
-SEARCH_SC = {**BASE_OPTS, 'default_search': 'scsearch50', 'extract_flat': True}
-SEARCH_AM = {**BASE_OPTS, 'default_search': 'amsearch50', 'extract_flat': True}
+SEARCH_OPTS_AM = {
+    'default_search': 'amsearch50',
+    'extract_flat': True,
+    'nocheckcertificate': True,
+    'user_agent': USER_AGENT
+}
 
-TEMP_PATH = "temp/"
+# مسار المجلد المؤقت
+TEMP_DIR = "temp/"
