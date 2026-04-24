@@ -1,6 +1,6 @@
 import os
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8784379561:AAERYlYq7Nktu8uwZAzh5Wqnu68XpQmTuU4")
 
 USER_AGENT = "Mozilla/5.0 Chrome/124.0.0.0"
 
