@@ -1,92 +1,116 @@
 import os
 import logging
 import asyncio
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-# إعداد السجلات
+# إعداد السجلات (Logs)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# سحب التوكن من Railway Variables
+# سحب التوكن من Railway
 TOKEN = os.getenv("BOT_TOKEN")
 
-# إعدادات التحميل (تعديل ليدعم تحميل الملف الفعلي)
+# إعدادات التحميل الشاملة
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'auto',
     'nocheckcertificate': True,
     'ignoreerrors': True,
-    'outtmpl': 'downloads/%(title)s.%(ext)s', # مسار حفظ الملف مؤقتاً
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'outtmpl': 'downloads/%(title)s.%(ext)s',
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'default_search': 'auto',
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✨ أرسل لي اسم الأغنية وسأرسلها لك كملف صوتي مباشرة!")
+    await update.message.reply_text(
+        "⚡ **مرحباً بك في بوت الموسيقى الشامل!**\n\n"
+        "أرسل اسم الأغنية وسأبحث لك في:\n"
+        "🎵 SoundCloud, Audiomack, Spotify,\n"
+        "Deezer, Apple Music, Tidal\n\n"
+        "سأرسل لك التفاصيل مع ملف الصوت مباشرة."
+    )
 
-async def search_and_send_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def search_and_send_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text
-    status_msg = await update.message.reply_text(f"⏳ جاري معالجة وتحميل: {query}...")
+    status_msg = await update.message.reply_text(f"🔍 جاري البحث والتحميل: {query}...")
 
-    # المحركات: SoundCloud و Audiomack
-    engines = ['scsearch1', 'amsearch1']
+    # ترتيب المحركات (بدأنا بالمنصات الأكثر استقراراً لـ Railway)
+    engines = ['scsearch1', 'amsearch1', 'dzsearch1', 'spsearch1']
     
     try:
-        # التأكد من وجود مجلد التحميلات
         if not os.path.exists('downloads'):
             os.makedirs('downloads')
 
         file_path = None
-        title = ""
+        metadata = {}
 
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             for engine in engines:
                 try:
-                    # البحث والتحميل الفعلي
                     info = ydl.extract_info(f"{engine}:{query}", download=True)
-                    if 'entries' in info and len(info['entries']) > 0:
+                    if info and 'entries' in info and len(info['entries']) > 0:
                         entry = info['entries'][0]
                         file_path = ydl.prepare_filename(entry)
-                        title = entry.get('title', 'Unknown')
-                        break # توقف عند أول نتيجة ناجحة
+                        
+                        # جلب البيانات المطلوبة
+                        metadata = {
+                            'title': entry.get('title', 'Unknown'),
+                            'uploader': entry.get('uploader', 'Unknown'),
+                            'url': entry.get('webpage_url'),
+                            'thumbnail': entry.get('thumbnail'),
+                            'source': "SoundCloud" if "sc" in engine else ("Audiomack" if "am" in engine else "Global Engine")
+                        }
+                        break
                 except Exception as e:
-                    logger.error(f"Error with engine {engine}: {e}")
+                    logger.error(f"Engine {engine} failed: {e}")
                     continue
 
         if file_path and os.path.exists(file_path):
-            # إرسال الملف الصوتي للتليجرام
-            await status_msg.edit_text("⚡ جاري الرفع إلى تيليجرام...")
-            
-            with open(file_path, 'rb') as audio:
-                await update.message.reply_audio(
-                    audio=audio,
-                    title=title,
-                    caption=f"🎵: {title}\n✅ تم التحميل بنجاح"
+            # 1. إرسال الصورة مع البيانات (الرابط والاسم)
+            caption = (
+                f"✅ **تم العثور على الأغنية!**\n\n"
+                f"🎵 **الأسم:** {metadata['title']}\n"
+                f"👤 **الفنان:** {metadata['uploader']}\n"
+                f"🌐 **المصدر:** {metadata['source']}\n"
+                f"🔗 [رابط الأغنية]({metadata['url']})"
+            )
+
+            if metadata['thumbnail']:
+                await update.message.reply_photo(
+                    photo=metadata['thumbnail'],
+                    caption=caption,
+                    parse_mode="Markdown"
                 )
-            
-            # حذف الملف من السيرفر لتوفير المساحة
+            else:
+                await update.message.reply_text(caption, parse_mode="Markdown")
+
+            # 2. إرسال الملف الصوتي
+            await update.message.reply_audio(
+                audio=open(file_path, 'rb'),
+                title=metadata['title'],
+                performer=metadata['uploader']
+            )
+
+            # التنظيف
             os.remove(file_path)
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ لم يتم العثور على ملف صالح للتحميل.")
+            await status_msg.edit_text("❌ لم أتمكن من العثور على الأغنية أو تحميلها من المصادر المتاحة.")
 
     except Exception as e:
-        logger.error(f"General Error: {e}")
-        await status_msg.edit_text("⚠️ حدث خطأ أثناء التحميل، حاول لاحقاً.")
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
+        logger.error(f"Error: {e}")
+        await status_msg.edit_text("⚠️ حدث خطأ فني أثناء المعالجة.")
 
 def main():
-    if not TOKEN:
-        return
+    if not TOKEN: return
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_and_send_audio))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_and_send_all))
     
-    # drop_pending_updates تتجاهل الرسائل القديمة لتجنب التعليق
+    # drop_pending_updates=True مهم جداً لمنع الـ Conflict
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
