@@ -19,7 +19,7 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.message.chat.type
     user_id = update.message.from_user.id
 
-    # نظام الاشتراك الإجباري (للأشخاص الذين يرسلون اسم الأغنية مباشرة في الخاص)
+    # حماية البحث في الخاص بالاشتراك الإجباري
     if chat_type == 'private' and FORCE_SUB_CHANNEL:
         try:
             member = await context.bot.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
@@ -32,7 +32,7 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=reply_markup,
                     parse_mode="Markdown"
                 )
-                return # إيقاف البحث
+                return 
         except Exception as e:
             logger.error(f"Force Sub Search Error: {e}")
 
