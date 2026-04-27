@@ -1,30 +1,37 @@
+import os
 import logging
 import asyncio
+import urllib.request
 import yt_dlp
 from telegram import Update
 from telegram.ext import ContextTypes
+from config import YDL_EXTRACT_OPTIONS, YDL_FALLBACK_DOWNLOAD_OPTIONS
 
 logger = logging.getLogger(__name__)
 
-# إعدادات استخراج الرابط فقط (بدون تحميل)
-YDL_EXTRACT_OPTIONS = {
-    'format': 'bestaudio/best',
-    'quiet': True,
-    'no_warnings': True,
-    'nocheckcertificate': True,
-    'ignoreerrors': True,
-    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-}
-
-# دالة الجاسوس: تجلب الرابط السري المباشر ولا تحمل الملف
-def get_direct_url(url):
+def get_direct_url_and_info(url):
     with yt_dlp.YoutubeDL(YDL_EXTRACT_OPTIONS) as ydl:
-        info = ydl.extract_info(url, download=False) # السر هنا: download=False
+        info = ydl.extract_info(url, download=False)
         if info:
-            # نحاول الحصول على أفضل رابط مباشر للصوت
-            direct_url = info.get('url')
-            return direct_url, info
+            return info.get('url'), info
     return None, None
+
+def download_local_fallback(url):
+    """الخطة ب: تحميل الملف فعلياً إذا رفض تلغرام الرابط"""
+    if not os.path.exists('temp'):
+        os.makedirs('temp')
+    with yt_dlp.YoutubeDL(YDL_FALLBACK_DOWNLOAD_OPTIONS) as ydl:
+        info = ydl.extract_info(url, download=True)
+        if info:
+            return ydl.prepare_filename(info)
+    return None
+
+def download_thumbnail(thumb_url, filename):
+    try:
+        urllib.request.urlretrieve(thumb_url, filename)
+        return True
+    except:
+        return False
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -42,67 +49,75 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         url = song_info['url']
 
-        # الذاكرة السحرية (تعمل كالمعتاد)
         if 'song_cache' not in context.bot_data:
             context.bot_data['song_cache'] = {}
 
+        # الذاكرة السريعة
         if url in context.bot_data['song_cache']:
-            file_id = context.bot_data['song_cache'][url]
             await query.message.reply_audio(
-                audio=file_id,
-                caption=f"⚡ **(تم الجلب من الذاكرة السريعة)**\n🎵 {song_info['title']}"
+                audio=context.bot_data['song_cache'][url],
+                caption=f"⚡ **(تحميل فوري)**\n🎵 {song_info['title']}"
             )
             return
 
-        loading_msg = await query.message.reply_text(f"🚀 جاري تمرير الطلب لسيرفرات تلغرام لـ:\n{song_info['title']}...")
+        loading_msg = await query.message.reply_text("🚀 جاري المعالجة السريعة...")
 
         try:
-            # سحب الرابط المباشر فقط (يأخذ ثانية واحدة)
-            direct_url, info = await asyncio.to_thread(get_direct_url, url)
+            # 1. محاولة استخراج الرابط المباشر
+            direct_url, info = await asyncio.to_thread(get_direct_url_and_info, url)
 
             if direct_url:
-                metadata = {
-                    'title': info.get('title', 'Unknown'),
-                    'uploader': info.get('uploader', 'Unknown'),
-                    'thumbnail': info.get('thumbnail'),
-                    'url': url,
-                    'source': song_info['source']
-                }
+                title = info.get('title', 'Unknown')
+                uploader = info.get('uploader', 'Unknown')
+                thumb_url = info.get('thumbnail')
+                
+                thumb_path = f"thumb_{msg_id}_{idx}.jpg"
+                has_thumb = False
 
-                caption = (
-                    f"✅ **تم العثور على الأغنية!**\n\n"
-                    f"🎵 **الأسم:** {metadata['title']}\n"
-                    f"👤 **الفنان:** {metadata['uploader']}\n"
-                    f"🌐 **المصدر:** {metadata['source']}\n"
-                    f"🔗 [رابط الأغنية]({metadata['url']})"
-                )
+                if thumb_url:
+                    has_thumb = await asyncio.to_thread(download_thumbnail, thumb_url, thumb_path)
 
-                if metadata.get('thumbnail'):
-                    try:
-                        await query.message.reply_photo(photo=metadata['thumbnail'], caption=caption, parse_mode="Markdown")
-                    except:
-                        pass 
-
-                # هنا الخدعة: نعطي الرابط المباشر لتلغرام ليقوم هو بالتحميل
                 try:
+                    # الخطة أ: إرسال الرابط المباشر لتلغرام ليقوم هو بالتحميل (السرعة القصوى)
                     sent_message = await query.message.reply_audio(
-                        audio=direct_url, # إرسال عبر الرابط وليس الملف!
-                        title=metadata['title'],
-                        performer=metadata['uploader'],
-                        read_timeout=60,
-                        connect_timeout=60
+                        audio=direct_url,
+                        title=title,
+                        performer=uploader,
+                        thumbnail=open(thumb_path, 'rb') if has_thumb else None,
+                        caption=f"✅ **تم التحميل الصاروخي!**\n🌐 المصدر: {song_info['source']}",
+                        read_timeout=60, connect_timeout=60
                     )
-                    
-                    # حفظ الملف في الذاكرة للمرات القادمة
                     context.bot_data['song_cache'][url] = sent_message.audio.file_id
                     await loading_msg.delete() 
+                    
+                except Exception as telegram_error:
+                    # الخطة ب: تلغرام رفض الرابط! لا مشكلة، نقوم بالتحميل محلياً بأنفسنا
+                    logger.warning(f"Telegram rejected direct link. Triggering Fallback Plan... {telegram_error}")
+                    await loading_msg.edit_text("⏳ المنصة رفضت التمرير السريع، جاري التحميل العميق (يرجى الانتظار القليل)...")
+                    
+                    local_file = await asyncio.to_thread(download_local_fallback, url)
+                    if local_file and os.path.exists(local_file):
+                        try:
+                            sent_message = await query.message.reply_audio(
+                                audio=open(local_file, 'rb'),
+                                title=title,
+                                performer=uploader,
+                                thumbnail=open(thumb_path, 'rb') if has_thumb else None,
+                                caption=f"✅ **تم التحميل العميق!**\n🌐 المصدر: {song_info['source']}",
+                                read_timeout=120, connect_timeout=120
+                            )
+                            context.bot_data['song_cache'][url] = sent_message.audio.file_id
+                            await loading_msg.delete()
+                        finally:
+                            os.remove(local_file) # تنظيف السيرفر
+                    else:
+                        await loading_msg.edit_text("❌ حدث خطأ في التحميل العميق. جرب نسخة أخرى.")
 
-                except Exception as e:
-                    logger.error(f"Telegram failed to download via direct URL: {e}")
-                    await loading_msg.edit_text("❌ سيرفرات تلغرام رفضت الرابط المباشر لهذه الأغنية بالذات. جرب نسخة أخرى من القائمة.")
+                finally:
+                    if has_thumb and os.path.exists(thumb_path):
+                        os.remove(thumb_path)
             else:
-                await loading_msg.edit_text("❌ عذراً، لم أتمكن من استخراج الرابط المباشر. جرب زراً آخر.")
-
+                await loading_msg.edit_text("❌ عذراً، لم أتمكن من استخراج بيانات الأغنية.")
         except Exception as e:
             logger.error(f"Extraction Error: {e}")
-            await loading_msg.edit_text("⚠️ فشل استخراج الطلب. جرب زراً آخر.")
+            await loading_msg.edit_text("⚠️ فشل التنزيل بالكامل. جرب زراً آخر.")
