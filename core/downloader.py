@@ -11,7 +11,6 @@ from config import YDL_EXTRACT_OPTIONS, YDL_FALLBACK_DOWNLOAD_OPTIONS, PERFECT_N
 logger = logging.getLogger(__name__)
 
 def sanitize_filename(name):
-    """تنظيف اسم الملف من أي رموز قد تسبب أخطاء في النظام"""
     clean_name = re.sub(r'[\\/*?:"<>|]', "", name).strip()
     return clean_name if clean_name else "Audio_Track"
 
@@ -57,14 +56,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'song_cache' not in context.bot_data:
             context.bot_data['song_cache'] = {}
 
+        # تم إزالة النص من الملف الصوتي المحمل من الذاكرة
         if url in context.bot_data['song_cache']:
             await query.message.reply_audio(
-                audio=context.bot_data['song_cache'][url],
-                caption=f"⚡ **(تحميل فوري - من الذاكرة)**\n🎵 {song_info['title']}"
+                audio=context.bot_data['song_cache'][url]
             )
             return
 
-        loading_msg = await query.message.reply_text("🚀 جاري معالجة الأغنية وصورة الغلاف...")
+        # رسالة احترافية عند بدء المعالجة
+        loading_msg = await query.message.reply_text("⏳ جاري استخراج البيانات وتجهيز المقطع الصوتي...")
 
         try:
             direct_url, info = await asyncio.to_thread(get_direct_url_and_info, url)
@@ -74,7 +74,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 uploader = info.get('uploader', 'Unknown')
                 thumb_url = info.get('thumbnail')
                 
-                # تجهيز الاسم الاحترافي النظيف
                 safe_title = sanitize_filename(title)
                 thumb_path = f"thumb_{msg_id}_{idx}.jpg"
                 has_thumb = False
@@ -82,10 +81,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if thumb_url:
                     has_thumb = await asyncio.to_thread(download_thumbnail, thumb_url, thumb_path)
 
-                # إرسال رسالة المعاينة (الرابط والصورة التفصيلية)
+                # رسالة الصورة النظيفة (بدون كلمة تم العثور)
                 try:
                     detailed_caption = (
-                        f"✅ **تم العثور على الأغنية!**\n\n"
                         f"🎵 **الأسم:** {title}\n"
                         f"👤 **الفنان:** {uploader}\n"
                         f"🌐 **المصدر:** {song_info['source']}\n"
@@ -98,17 +96,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except:
                     pass
 
-                # المعالجة: الاختيار بين السرعة العشوائية أو الاسم الاحترافي
                 telegram_error = None
                 if not PERFECT_NAME_MODE:
                     try:
-                        # الخطة الصاروخية (قد تأتي باسم عشوائي)
+                        # الخطة الصاروخية (بدون أي نصوص إضافية)
                         sent_message = await query.message.reply_audio(
                             audio=direct_url,
                             title=title,
                             performer=uploader,
-                            thumbnail=open(thumb_path, 'rb') if has_thumb else None, 
-                            caption=f"⚡ **تم التحميل الصاروخي!**\n🌐 المصدر: {song_info['source']}",
+                            thumbnail=open(thumb_path, 'rb') if has_thumb else None,
                             read_timeout=60, connect_timeout=60
                         )
                         context.bot_data['song_cache'][url] = sent_message.audio.file_id
@@ -117,21 +113,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         telegram_error = e
 
-                # الخطة الاحترافية لتسمية الملف (تعمل إما كـ Plan B أو إذا كان PERFECT_NAME_MODE = True)
                 if PERFECT_NAME_MODE or telegram_error:
-                    await loading_msg.edit_text("⏳ جاري سحب الأغنية وتسميتها بشكل احترافي (يرجى الانتظار القليل)...")
+                    # رسالة احترافية عند التحميل وتغيير الاسم
+                    await loading_msg.edit_text("⚙️ جاري معالجة الملف الصوتي وإعداده بالاسم الأصلي...")
                     local_file = await asyncio.to_thread(download_local_fallback, url)
                     
                     if local_file and os.path.exists(local_file):
                         try:
                             with open(local_file, 'rb') as audio_file:
+                                # الخطة الاحترافية (بدون أي نصوص إضافية)
                                 sent_message = await query.message.reply_audio(
                                     audio=audio_file,
-                                    filename=f"{safe_title}.mp3", # 🌟 السر هنا: إجبار تلغرام على الاسم الصحيح
+                                    filename=f"{safe_title}.mp3", 
                                     title=title,
                                     performer=uploader,
                                     thumbnail=open(thumb_path, 'rb') if has_thumb else None,
-                                    caption=f"✅ **تم التحميل بنجاح!**\n🌐 المصدر: {song_info['source']}",
                                     read_timeout=120, connect_timeout=120
                                 )
                                 context.bot_data['song_cache'][url] = sent_message.audio.file_id
@@ -139,9 +135,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         finally:
                             os.remove(local_file) 
                     else:
-                        await loading_msg.edit_text("❌ حدث خطأ في التحميل العميق. جرب نسخة أخرى.")
+                        await loading_msg.edit_text("❌ حدث خطأ في معالجة الملف. جرب نسخة أخرى.")
 
-                # تنظيف الصورة
                 if has_thumb and os.path.exists(thumb_path):
                     os.remove(thumb_path)
             else:
