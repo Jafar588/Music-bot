@@ -69,3 +69,4 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data[status_msg.message_id] = results_dict
     await status_msg.edit_text("🔍 تم العثور على هذه النسخ، اختر واحدة للتحميل:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=InlineKeyboardMarkup(keyboard))
     asyncio.create_task(delete_message_later(status_msg, 120))
+
