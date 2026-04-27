@@ -1,10 +1,15 @@
 import asyncio
+import logging
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config import YDL_SEARCH_OPTIONS, FORCE_SUB_CHANNEL
 
+# إخراس رسائل yt-dlp في السجل
+logging.getLogger("yt_dlp").setLevel(logging.WARNING)
+
 async def delete_message_later(message, delay):
+    """حذف رسالة القائمة بعد دقيقتين لتنظيف الشاشة"""
     await asyncio.sleep(delay)
     try:
         await message.delete()
@@ -16,19 +21,21 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.message.chat.type
     user_id = update.message.from_user.id
 
+    # التحقق من الاشتراك الإجباري في الخاص
     if chat_type == 'private' and FORCE_SUB_CHANNEL:
         try:
             member = await context.bot.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
             if member.status in ['left', 'kicked']:
-                keyboard = [[InlineKeyboardButton("📢 اضغط هنا للانضمام للمجموعة", url=f"https://t.me/{FORCE_SUB_CHANNEL.replace('@', '')}")]]
+                keyboard = [[InlineKeyboardButton("📢 اضغط هنا للانضمام", url=f"https://t.me/{FORCE_SUB_CHANNEL.replace('@', '')}")]]
                 await update.message.reply_text(
-                    "❌ **يجب عليك الانضمام لمجموعتنا أولاً.**",
+                    "❌ **يجب عليك الانضمام لمجموعتنا أولاً لتتمكن من استخدام البوت.**",
                     reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
                 )
                 return 
         except:
             pass
 
+    # استخراج نص البحث بناءً على نوع المحادثة
     if chat_type in ['group', 'supergroup'] and raw_text.startswith("بحث "):
         query = raw_text.replace("بحث ", "", 1).strip()
     elif chat_type == 'private':
@@ -38,9 +45,9 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not query: return
 
-    status_msg = await update.message.reply_text(f"🔍 جاري البحث في المنصات الآمنة لـ: {query}...")
+    status_msg = await update.message.reply_text(f"🔍 جاري البحث في قواعد البيانات الآمنة لـ: {query}...")
     
-    # استخدام محركات آمنة جداً ضد الحظر: ساوند كلاود و باندكامب
+    # استخدام محركات مجانية تماماً لتجنب الحظر: SoundCloud (SC) و Bandcamp (BC)
     engines = ['scsearch10', 'bcsearch5']
     keyboard, results_dict, found = [], {}, False
 
@@ -53,6 +60,7 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         title = entry.get('title', 'Unknown Title')
                         url = entry.get('url') or entry.get('webpage_url')
                         if url:
+                            # حفظ البيانات مؤقتاً لتمريرها لزر التحميل
                             results_dict[str(idx)] = {'url': url, 'title': title, 'source': "SoundCloud" if "sc" in engine else "Bandcamp"}
                             keyboard.append([InlineKeyboardButton(f"{idx+1}. {title[:40]}", callback_data=f"dl_{idx}")])
                     found = True
@@ -60,10 +68,16 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 continue
 
+    # إذا لم يتم العثور على نتائج
     if not found or not keyboard:
-        await status_msg.edit_text("❌ لم يتم العثور على نتائج. جرب اسماً آخر.")
+        await status_msg.edit_text("❌ لم يتم العثور على نتائج. جرب اسماً آخر أو نسخة أخرى.")
         return
 
+    # حفظ النتائج في بيانات المحادثة لاستخدامها عند الضغط على الزر
     context.chat_data[status_msg.message_id] = results_dict
-    await status_msg.edit_text("🔍 تم العثور على هذه النسخ، اختر واحدة:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    # إرسال قائمة النتائج مع أزرار التحميل
+    await status_msg.edit_text("🔍 تم العثور على هذه النسخ، اختر واحدة للتحميل:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    # بدء مؤقت لحذف القائمة بعد دقيقتين
     asyncio.create_task(delete_message_later(status_msg, 120))
