@@ -21,7 +21,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is Alive and Running Perfect (V14 Pro)!"
+    return "Bot is Alive and Running Perfect (V15 Clean UX)!"
 
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
@@ -45,7 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     await update.message.reply_text(
-        "⚡ **مرحباً بك في بوت الموسيقى الاحترافي (V14)!**\n\n"
+        "⚡ **مرحباً بك في بوت الموسيقى الاحترافي (V15)!**\n\n"
         "💡 **في المجموعات:** ابدأ طلبك بكلمة 'بحث' (مثال: بحث انتي السند).\n"
         "📱 **في الخاص:** أرسل الاسم مباشرة."
     )
@@ -66,7 +66,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.PRIVATE | group_filter), search_and_list))
     application.add_handler(CallbackQueryHandler(button_callback))
     
-    logger.info("Bot Version 14 (Professional Naming) is running!")
+    logger.info("Bot Version 15 (Clean UX & Professional Naming) is running!")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
