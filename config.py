@@ -1,9 +1,10 @@
 import os
 
+# توكن البوت والاشتراك الإجباري
 TOKEN = os.getenv("BOT_TOKEN")
 FORCE_SUB_CHANNEL = "@cdzo1song"
 
-# إعدادات البحث الآمن (بدون يوتيوب)
+# إعدادات البحث الآمن (بدون يوتيوب لتجنب الحظر)
 YDL_SEARCH_OPTIONS = {
     'format': 'bestaudio/best',
     'quiet': True,
@@ -12,7 +13,7 @@ YDL_SEARCH_OPTIONS = {
     'ignoreerrors': True,
 }
 
-# إعدادات الاستخراج السريع (للتمريرة الحاسمة)
+# إعدادات الاستخراج السريع للروابط
 YDL_EXTRACT_OPTIONS = {
     'format': 'bestaudio/best',
     'quiet': True,
@@ -22,7 +23,7 @@ YDL_EXTRACT_OPTIONS = {
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 }
 
-# إعدادات (الخطة ب): التحميل المحلي بوزن الريشة في حال رفض تلغرام الرابط
+# إعدادات (الخطة البديلة) لتحميل الملف محلياً إذا رفض تلغرام الرابط المباشر
 YDL_FALLBACK_DOWNLOAD_OPTIONS = {
     'format': 'bestaudio[ext=m4a][abr<=96]/bestaudio[ext=mp3][abr<=96]/worstaudio/best', 
     'quiet': True,
