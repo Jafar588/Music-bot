@@ -3,9 +3,7 @@ import os
 TOKEN = os.getenv("BOT_TOKEN")
 FORCE_SUB_CHANNEL = "@cdzo1song"
 
-# 🌟 ميزة الإصدار 14: وضع التسمية الاحترافية
-# True = يضمن أن اسم الملف الصوتي يكون باللغة العربية (احترافي جداً للـ VPS)
-# False = يركز على السرعة القصوى فقط (قد يظهر اسم عشوائي)
+# وضع التسمية الاحترافية (True = اسم عربي نظيف للملف، False = سرعة قصوى بأسماء عشوائية)
 PERFECT_NAME_MODE = True
 
 YDL_SEARCH_OPTIONS = {
