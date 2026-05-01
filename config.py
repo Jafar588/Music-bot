@@ -3,8 +3,8 @@ import os
 TOKEN = os.getenv("BOT_TOKEN")
 FORCE_SUB_CHANNEL = "@cdzo1song"
 
-# وضع التسمية الاحترافية (True = اسم عربي نظيف للملف، False = سرعة قصوى بأسماء عشوائية)
-PERFECT_NAME_MODE = True
+# 🚀 وضع السرعة القصوى (False = سرعة صاروخية بأسماء عشوائية، تناسب السيرفرات المجانية)
+PERFECT_NAME_MODE = False
 
 YDL_SEARCH_OPTIONS = {
     'format': 'bestaudio/best',
