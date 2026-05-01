@@ -56,15 +56,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'song_cache' not in context.bot_data:
             context.bot_data['song_cache'] = {}
 
-        # تم إزالة النص من الملف الصوتي المحمل من الذاكرة
         if url in context.bot_data['song_cache']:
             await query.message.reply_audio(
                 audio=context.bot_data['song_cache'][url]
             )
             return
 
-        # رسالة احترافية عند بدء المعالجة
-        loading_msg = await query.message.reply_text("⏳ جاري استخراج البيانات وتجهيز المقطع الصوتي...")
+        loading_msg = await query.message.reply_text("⏳ جاري استخراج البيانات السريعة...")
 
         try:
             direct_url, info = await asyncio.to_thread(get_direct_url_and_info, url)
@@ -81,7 +79,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if thumb_url:
                     has_thumb = await asyncio.to_thread(download_thumbnail, thumb_url, thumb_path)
 
-                # رسالة الصورة النظيفة (بدون كلمة تم العثور)
                 try:
                     detailed_caption = (
                         f"🎵 **الأسم:** {title}\n"
@@ -99,7 +96,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 telegram_error = None
                 if not PERFECT_NAME_MODE:
                     try:
-                        # الخطة الصاروخية (بدون أي نصوص إضافية)
+                        # 🚀 الخطة الصاروخية: إرسال الرابط مباشرة لتلغرام بدون تحميله على السيرفر
                         sent_message = await query.message.reply_audio(
                             audio=direct_url,
                             title=title,
@@ -113,15 +110,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         telegram_error = e
 
+                # خطة الطوارئ (Plan B): فقط إذا رفض تلغرام الرابط المباشر
                 if PERFECT_NAME_MODE or telegram_error:
-                    # رسالة احترافية عند التحميل وتغيير الاسم
-                    await loading_msg.edit_text("⚙️ جاري معالجة الملف الصوتي وإعداده بالاسم الأصلي...")
+                    await loading_msg.edit_text("⚙️ جاري معالجة الملف الصوتي...")
                     local_file = await asyncio.to_thread(download_local_fallback, url)
                     
                     if local_file and os.path.exists(local_file):
                         try:
                             with open(local_file, 'rb') as audio_file:
-                                # الخطة الاحترافية (بدون أي نصوص إضافية)
                                 sent_message = await query.message.reply_audio(
                                     audio=audio_file,
                                     filename=f"{safe_title}.mp3", 
