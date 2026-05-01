@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -41,6 +42,17 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not query: return
 
+    # التعرف التلقائي على الروابط
+    if re.match(r'^https?://', query):
+        status_msg = await update.message.reply_text("🔗 تم التعرف على الرابط، جاري تجهيزه...")
+        results_dict = {'0': {'url': query, 'title': 'ملف من رابط خارجي', 'source': 'رابط مباشر'}}
+        context.chat_data[status_msg.message_id] = results_dict
+        
+        keyboard = [[InlineKeyboardButton("📥 تحميل هذا الرابط", callback_data="dl_0")]]
+        await status_msg.edit_text("🔗 **تم التعرف على الرابط!**\nاضغط على الزر بالأسفل للتحميل:", reply_markup=InlineKeyboardMarkup(keyboard))
+        asyncio.create_task(delete_message_later(status_msg, 120))
+        return
+
     status_msg = await update.message.reply_text(f"🔍 جاري البحث لـ: {query}...")
     
     engines = ['scsearch10', 'bcsearch5']
@@ -69,4 +81,3 @@ async def search_and_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data[status_msg.message_id] = results_dict
     await status_msg.edit_text("🔍 تم العثور على هذه النسخ، اختر واحدة للتحميل:\n⏳ *(القائمة ستختفي بعد دقيقتين)*", reply_markup=InlineKeyboardMarkup(keyboard))
     asyncio.create_task(delete_message_later(status_msg, 120))
-
