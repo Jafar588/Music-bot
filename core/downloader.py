@@ -62,7 +62,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        loading_msg = await query.message.reply_text("⏳ جاري استخراج البيانات السريعة...")
+        loading_msg = await query.message.reply_text("⏳ جاري استخراج الأغنية بأعلى جودة صوتية...")
 
         try:
             direct_url, info = await asyncio.to_thread(get_direct_url_and_info, url)
@@ -96,7 +96,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 telegram_error = None
                 if not PERFECT_NAME_MODE:
                     try:
-                        # 🚀 الخطة الصاروخية: إرسال الرابط مباشرة لتلغرام بدون تحميله على السيرفر
                         sent_message = await query.message.reply_audio(
                             audio=direct_url,
                             title=title,
@@ -110,9 +109,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         telegram_error = e
 
-                # خطة الطوارئ (Plan B): فقط إذا رفض تلغرام الرابط المباشر
                 if PERFECT_NAME_MODE or telegram_error:
-                    await loading_msg.edit_text("⚙️ جاري معالجة الملف الصوتي...")
+                    await loading_msg.edit_text("⚙️ جاري معالجة الملف الصوتي بأقصى جودة...")
                     local_file = await asyncio.to_thread(download_local_fallback, url)
                     
                     if local_file and os.path.exists(local_file):
