@@ -3,7 +3,7 @@ import os
 TOKEN = os.getenv("BOT_TOKEN")
 FORCE_SUB_CHANNEL = "@cdzo1song"
 
-# 🚀 وضع السرعة القصوى (False = سرعة صاروخية بأسماء عشوائية، تناسب السيرفرات المجانية)
+# وضع السرعة القصوى (False = سرعة صاروخية بأسماء عشوائية)
 PERFECT_NAME_MODE = False
 
 YDL_SEARCH_OPTIONS = {
@@ -14,8 +14,9 @@ YDL_SEARCH_OPTIONS = {
     'ignoreerrors': True,
 }
 
+# 🌟 ميزة الإصدار 18: إجبار السيرفر على سحب أعلى جودة صوتية ممكنة (M4A أو MP3)
 YDL_EXTRACT_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best',
     'quiet': True,
     'no_warnings': True,
     'nocheckcertificate': True,
@@ -23,8 +24,9 @@ YDL_EXTRACT_OPTIONS = {
     'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 }
 
+# 🌟 الخطة البديلة: تم إزالة الضغط (وزن الريشة) وأصبحت تسحب أعلى جودة
 YDL_FALLBACK_DOWNLOAD_OPTIONS = {
-    'format': 'bestaudio[ext=m4a][abr<=96]/bestaudio[ext=mp3][abr<=96]/worstaudio/best', 
+    'format': 'bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best', 
     'quiet': True,
     'no_warnings': True,
     'nocheckcertificate': True,
